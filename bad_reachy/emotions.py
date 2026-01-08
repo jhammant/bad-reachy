@@ -1,5 +1,5 @@
 """
-Emotional Head Movements for Grumpy Reachy
+Emotional Head Movements for Bad Reachy
 ==========================================
 Maps emotions to head movements to bring the grumpy personality to life.
 """

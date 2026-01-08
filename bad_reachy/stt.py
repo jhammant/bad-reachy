@@ -1,5 +1,5 @@
 """
-Local Speech-to-Text for Grumpy Reachy
+Local Speech-to-Text for Bad Reachy
 ======================================
 Uses faster-whisper for local transcription on Mac
 """

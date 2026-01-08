@@ -1,5 +1,5 @@
 """
-LM Studio Client for Grumpy Reachy
+LM Studio Client for Bad Reachy
 ==================================
 Local LLM via LM Studio API (OpenAI compatible)
 """

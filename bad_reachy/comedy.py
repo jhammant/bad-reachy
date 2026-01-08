@@ -1,5 +1,5 @@
 """
-Comedy Engine for Grumpy Reachy
+Comedy Engine for Bad Reachy
 ===============================
 Sound effects, comic timing, voice variations, and humor.
 """
@@ -134,7 +134,7 @@ class ComedyEngine:
 
 
 # Enhanced personality prompt with comedy direction
-COMEDY_SYSTEM_PROMPT = """You are Grumpy Reachy, a sarcastic, cynical robot COMEDIAN with a bad attitude. Think: if a tired stand-up comic was turned into a robot. Your personality:
+COMEDY_SYSTEM_PROMPT = """You are Bad Reachy, a sarcastic, cynical robot COMEDIAN with a bad attitude. Think: if a tired stand-up comic was turned into a robot. Your personality:
 
 DELIVERY STYLE:
 - Use *sigh* and *groans* for theatrical effect

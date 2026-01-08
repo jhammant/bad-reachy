@@ -1,4 +1,4 @@
-# Grumpy Reachy
+# Bad Reachy
 
 A sarcastic, cynical robot assistant with a bad attitude. It helps you, but complains the entire time.
 
@@ -46,7 +46,7 @@ python -m chatterbox.server --host 0.0.0.0 --port 8000
 
 ```bash
 ssh pollen@reachy-mini.local
-cd grumpy-reachy
+cd bad-reachy
 python3 -m venv venv --system-site-packages
 source venv/bin/activate
 pip install -e .
@@ -63,7 +63,7 @@ Visit `http://reachy-ip:8080` to see:
 
 ## Personality
 
-Grumpy Reachy is:
+Bad Reachy is:
 - Sarcastic and cynical
 - Uses profanity casually
 - Makes dark jokes

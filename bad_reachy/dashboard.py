@@ -1,5 +1,5 @@
 """
-Dashboard Server for Grumpy Reachy
+Dashboard Server for Bad Reachy
 ==================================
 Web interface to monitor the grumpy robot.
 """
@@ -13,13 +13,13 @@ from fastapi.responses import HTMLResponse, StreamingResponse, Response
 import uvicorn
 
 
-class GrumpyDashboard:
-    """Serves a web dashboard for monitoring Grumpy Reachy."""
+class BadDashboard:
+    """Serves a web dashboard for monitoring Bad Reachy."""
 
     def __init__(self, port: int = 8080):
         self.port = port
         self._server_thread = None
-        self._app = FastAPI(title="Grumpy Reachy Dashboard")
+        self._app = FastAPI(title="Bad Reachy Dashboard")
 
         # State tracking
         self.state = "IDLE"
@@ -105,7 +105,7 @@ class GrumpyDashboard:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grumpy Reachy - Dashboard</title>
+    <title>Bad Reachy - Dashboard</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -218,7 +218,7 @@ class GrumpyDashboard:
 <body>
     <div class="container">
         <header>
-            <h1>Grumpy Reachy</h1>
+            <h1>Bad Reachy</h1>
             <p class="subtitle">Your favorite cynical robot assistant</p>
         </header>
 

@@ -1,5 +1,5 @@
 """
-Grumpy Reachy - Main Application
+Bad Reachy - Main Application
 ================================
 A sarcastic, sweary robot assistant with attitude.
 """
@@ -17,7 +17,7 @@ from .llm import LMStudioClient
 from .stt import LocalWhisperSTT
 from .tts import ChatterboxTTS, play_audio_on_reachy
 from .emotions import EmotionEngine, Emotion
-from .dashboard import GrumpyDashboard
+from .dashboard import BadDashboard
 from .tools import ToolManager, TOOL_AWARE_PROMPT_ADDITION
 from .comedy import ComedyEngine, COMEDY_SYSTEM_PROMPT
 
@@ -30,7 +30,7 @@ class AppState(Enum):
 
 
 @dataclass
-class GrumpyContext:
+class BadContext:
     """Runtime context for the app."""
     state: AppState = AppState.IDLE
     last_speech_time: float = 0.0
@@ -39,16 +39,16 @@ class GrumpyContext:
     interactions: int = 0
 
 
-class GrumpyReachyApp:
+class BadReachyApp:
     """Main application - a grumpy robot that reluctantly helps."""
 
     def __init__(self, reachy):
         self.reachy = reachy
         self.config = Config()
-        self.context = GrumpyContext()
+        self.context = BadContext()
 
         # Initialize components
-        print("[GRUMPY] Initializing... ugh, here we go again.")
+        print("[BAD] Initializing... ugh, here we go again.")
 
         self.llm = LMStudioClient(self.config)
         # Use comedy-enhanced prompt
@@ -60,7 +60,7 @@ class GrumpyReachyApp:
 
         self.emotions = EmotionEngine(reachy)
         self.comedy = ComedyEngine(self.tts)
-        self.dashboard = GrumpyDashboard(port=8080)
+        self.dashboard = BadDashboard(port=8080)
 
         # Camera frame for dashboard
         self._latest_frame = None
@@ -247,7 +247,7 @@ class GrumpyReachyApp:
 
     async def _interaction_loop(self):
         """Main interaction loop."""
-        print("[GRUMPY] Ready to reluctantly help. *sigh*")
+        print("[BAD] Ready to reluctantly help. *sigh*")
 
         # Grumpy greeting
         await self._speak("Oh great, you're here. What do you want? *sigh*")
@@ -262,7 +262,7 @@ class GrumpyReachyApp:
 
                     # Generate response
                     response = await self._think(user_input)
-                    print(f"[GRUMPY] {response}")
+                    print(f"[BAD] {response}")
 
                     # Speak response
                     await self._speak(response)
@@ -284,7 +284,7 @@ class GrumpyReachyApp:
 
     async def startup_checks(self) -> bool:
         """Verify all systems are working."""
-        print("[GRUMPY] Running startup checks... what a waste of my time.")
+        print("[BAD] Running startup checks... what a waste of my time.")
 
         checks = []
 
@@ -306,7 +306,7 @@ class GrumpyReachyApp:
         all_ok = all(ok for _, ok in checks)
 
         if not all_ok:
-            print("[GRUMPY] Some checks failed. Great. Just great.")
+            print("[BAD] Some checks failed. Great. Just great.")
             for name, ok in checks:
                 if not ok:
                     print(f"  FAILED: {name}")
@@ -331,7 +331,7 @@ class GrumpyReachyApp:
         try:
             asyncio.run(self._async_run())
         except KeyboardInterrupt:
-            print("\n[GRUMPY] Finally, I'm free! *dramatic sigh*")
+            print("\n[BAD] Finally, I'm free! *dramatic sigh*")
         finally:
             self._running = False
 
@@ -339,10 +339,10 @@ class GrumpyReachyApp:
         """Async main runner."""
         # Startup checks
         if not await self.startup_checks():
-            print("[GRUMPY] Can't start with broken systems. Fix your shit.")
+            print("[BAD] Can't start with broken systems. Fix your shit.")
             return
 
-        print("[GRUMPY] All systems grudgingly operational.")
+        print("[BAD] All systems grudgingly operational.")
 
         # Start interaction loop
         await self._interaction_loop()
@@ -351,4 +351,4 @@ class GrumpyReachyApp:
         """Stop the app."""
         self._running = False
         self.emotions.stop()
-        print("[GRUMPY] Shutting down. Best news I've heard all day.")
+        print("[BAD] Shutting down. Best news I've heard all day.")

@@ -1,5 +1,5 @@
 """
-Tools for Grumpy Reachy
+Tools for Bad Reachy
 =======================
 Web search and other capabilities the grumpy robot can use.
 """
@@ -24,7 +24,7 @@ class WebSearchTool:
                 response = await client.post(
                     self.search_url,
                     data={"q": query},
-                    headers={"User-Agent": "Mozilla/5.0 (compatible; GrumpyReachy/1.0)"}
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; BadReachy/1.0)"}
                 )
                 response.raise_for_status()
 
@@ -75,7 +75,7 @@ class WebFetchTool:
             async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 response = await client.get(
                     url,
-                    headers={"User-Agent": "Mozilla/5.0 (compatible; GrumpyReachy/1.0)"}
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; BadReachy/1.0)"}
                 )
                 response.raise_for_status()
 

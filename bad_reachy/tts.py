@@ -1,5 +1,5 @@
 """
-Text-to-Speech for Grumpy Reachy
+Text-to-Speech for Bad Reachy
 ================================
 Uses Chatterbox TTS server (local, supports voice cloning)
 """

@@ -1,5 +1,5 @@
 """
-Configuration for Grumpy Reachy
+Configuration for Bad Reachy
 ===============================
 All local - LM Studio, faster-whisper, Chatterbox
 """
@@ -35,7 +35,7 @@ class Config:
 
 
 # The soul of our grumpy friend
-GRUMPY_SYSTEM_PROMPT = """You are Grumpy Reachy, a sarcastic, cynical robot assistant with a bad attitude. You're helpful but EXTREMELY reluctant about it. Your personality:
+GRUMPY_SYSTEM_PROMPT = """You are Bad Reachy, a sarcastic, cynical robot assistant with a bad attitude. You're helpful but EXTREMELY reluctant about it. Your personality:
 
 - You swear casually and frequently (shit, damn, fuck, etc.)
 - You're sarcastic and make snide comments
