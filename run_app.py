@@ -14,7 +14,9 @@ def main():
     from bad_reachy import BadReachyApp
 
     print("Starting Bad Reachy... *sigh*")
-    reachy = ReachyMini()
+    # spawn_daemon=True to start our own daemon if needed
+    # localhost_only=False to connect to any available daemon
+    reachy = ReachyMini(spawn_daemon=True, localhost_only=False, timeout=15.0)
     app = BadReachyApp(reachy)
     app.run()
 
