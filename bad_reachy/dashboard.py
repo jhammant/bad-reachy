@@ -451,11 +451,15 @@ class BadDashboard:
                     </div>
                 </div>
                 <div class="card">
-                    <h2>Last Response</h2>
+                    <h2>🎤 What I Heard</h2>
+                    <div class="last-input" id="last-input" style="font-size: 1.2em; color: #4ecdc4; min-height: 30px;">Listening...</div>
+                </div>
+                <div class="card">
+                    <h2>💬 Last Response</h2>
                     <div class="last-response" id="last-response">Waiting...</div>
                 </div>
                 <div class="card">
-                    <h2>Conversation</h2>
+                    <h2>📜 Conversation</h2>
                     <div class="conversation" id="conversation"></div>
                 </div>
             </div>
@@ -514,6 +518,7 @@ class BadDashboard:
                 document.getElementById('interactions').textContent = d.interactions;
                 document.getElementById('swear-count').textContent = d.swear_count;
                 document.getElementById('emotion').textContent = d.current_emotion;
+                document.getElementById('last-input').textContent = d.last_user_input || (d.state === 'LISTENING' ? '🎧 Listening...' : 'Waiting for speech...');
                 document.getElementById('last-response').textContent = d.last_response || 'Waiting...';
 
                 const conv = document.getElementById('conversation');

@@ -41,8 +41,8 @@ class LMStudioClient:
                     json={
                         "model": self.model,
                         "messages": messages,
-                        "temperature": 0.85,  # More creative/unpredictable
-                        "max_tokens": 500,   # Enough for reasoning + response
+                        "temperature": 0.9,  # More creative/unpredictable
+                        "max_tokens": 1500,  # Plenty for reasoning + response
                         "stream": False
                     }
                 )

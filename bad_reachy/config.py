@@ -24,7 +24,7 @@ class Config:
 
     # Audio settings
     sample_rate: int = 16000
-    recording_duration: float = 4.0
+    recording_duration: float = 2.5  # Reduced for faster response
 
     # Personality
     grumpy_level: int = 8  # 1-10 scale of grumpiness

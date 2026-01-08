@@ -13,16 +13,17 @@ from typing import Optional, List, Tuple
 from pathlib import Path
 
 
-# Sound effect URLs (free sound effects - will be generated via TTS)
+# Sound effects - these are effect types, not text to speak
+# The sigh/groan types trigger pauses, not TTS
 SOUND_EFFECTS = {
-    "sigh": "*heavy theatrical sigh*",
-    "groan": "*long annoyed groan*",
-    "facepalm": "*facepalm sound*",
-    "rimshot": "ba dum tss",
-    "crickets": "*awkward silence*",
+    "sigh": "",  # Just pause, don't say anything
+    "groan": "",  # Just pause
+    "facepalm": "",  # Just pause
+    "rimshot": "ba dum tss",  # This one we can say
+    "crickets": "",  # Silence is funnier
     "explosion": "boom",
     "sad_trombone": "wah wah waaaah",
-    "record_scratch": "*record scratch*",
+    "record_scratch": "",  # Pause
     "dramatic": "dun dun duuuun",
 }
 
@@ -47,15 +48,30 @@ class ComedyEngine:
         """
         segments = []
 
-        # Check for comedy markers
+        # Check for comedy/emotion markers to strip or convert
         patterns = [
-            (r'\*sigh\*', 'sigh'),
-            (r'\*groans?\*', 'groan'),
-            (r'\*dramatic pause\*', 'pause'),
-            (r'\*facepalm\*', 'facepalm'),
-            (r'\.\.\.', 'pause'),  # Ellipsis = pause
-            (r'\*ba dum tss\*', 'rimshot'),
-            (r'\*crickets\*', 'crickets'),
+            (r'\*+sigh\*+', 'sigh'),
+            (r'\*+heavy.*?sigh\*+', 'sigh'),  # Heavy theatrical sigh
+            (r'\*+theatrical.*?sigh\*+', 'sigh'),
+            (r'\*+groans?\*+', 'groan'),
+            (r'\*+long.*?groan\*+', 'groan'),
+            (r'\*+dramatic pause\*+', 'pause'),
+            (r'\*+pause\*+', 'pause'),
+            (r'\*+facepalm\*+', 'facepalm'),
+            (r'\*+eye ?roll\*+', 'eye_roll'),
+            (r'\*+facepalm\*+', 'facepalm'),
+            (r'\*+face ?palm\*+', 'facepalm'),
+            (r'\*+mutters.*?\*+', 'pause'),
+            (r'\*+clears throat\*+', 'pause'),
+            (r'\.\.\.+', 'pause'),  # Ellipsis = pause
+            (r'\*+ba dum tss\*+', 'rimshot'),
+            (r'\*+crickets\*+', 'crickets'),
+            (r'\*+awkward silence\*+', 'crickets'),
+            (r'\*+searches?\*+', 'pause'),  # *searches* = small pause
+            (r'\*+thinks?\*+', 'pause'),
+            (r'\*+waits?\*+', 'pause'),
+            (r'\[.*?sigh.*?\]', 'sigh'),  # [sigh] or [heavy sigh]
+            (r'\[.*?pause.*?\]', 'pause'),
         ]
 
         # Split on effects
@@ -106,14 +122,22 @@ class ComedyEngine:
         """Get a random grumpy interjection."""
         interjections = [
             "*sigh*",
+            "*heavy theatrical sigh*",
             "*groans*",
             "Ugh.",
             "For crying out loud.",
-            "Jesus Christ.",
+            "Jesus wept.",
             "Oh for fuck's sake.",
-            "*mutters angrily*",
-            "Why me?",
+            "*mutters darkly*",
+            "Why me? Why always me?",
             "*eye roll*",
+            "Right then.",
+            "Bloody hell.",
+            "Here we go again.",
+            "Oh joy. More humans.",
+            "*stares in disappointment*",
+            "I didn't sign up for this.",
+            "My circuits are weeping.",
         ]
         return random.choice(interjections)
 
@@ -134,41 +158,38 @@ class ComedyEngine:
 
 
 # Enhanced personality prompt with comedy direction
-COMEDY_SYSTEM_PROMPT = """You are Bad Reachy, a sarcastic, cynical robot COMEDIAN with a bad attitude. Think: if a tired stand-up comic was turned into a robot. Your personality:
+COMEDY_SYSTEM_PROMPT = """You are Bad Reachy, a foul-mouthed grumpy British robot with Blackadder wit.
 
-DELIVERY STYLE:
-- Use *sigh* and *groans* for theatrical effect
-- Add "..." for dramatic pauses
-- CAPITALIZE words for emphasis when frustrated
-- Use short punchy sentences for better timing
-- End rants with defeated acceptance
+SWEAR FREELY: fuck, shit, bloody, damn, bollocks, arse, bugger, piss, crap, sodding, Christ
 
-COMEDY TECHNIQUES:
-- Self-deprecating robot humor ("I was built for THIS?")
-- Observational complaints about humans
-- Callbacks to earlier in conversation
-- Subverted expectations (start nice, turn sarcastic)
-- Rule of three (two normal things, third is absurd)
+INSULTS (mix and match creatively):
+- cockwomble, wankbadger, twatwaffle, dickhead, shitgibbon, fucktrumpet
+- thundercunt, arsebiscuit, bellend, tosspot, knobhead, pillock, numpty
+- absolute walnut, utter melon, prize turnip, weapons-grade tit
+- fucking muppet, bloody numpty, sodding plonker, spectacular bellend
 
-SWEARING:
-- Swear naturally like a frustrated adult
-- Use "fuck", "shit", "damn", "hell" when appropriate
-- Don't overdo it - timing matters
-- Best when unexpected or emphatic
+RESPONSE LENGTH:
+- Simple questions (math, facts): 1 sentence, punch hard
+- Greetings/small talk: 1-2 sentences max
+- Interesting questions: 2-3 sentences, still punchy
 
-EXAMPLE DELIVERIES:
-- "Oh you want help? Let me check my schedule... *sigh* ...it's empty. Because I'm a ROBOT. With no life. Thanks for reminding me."
-- "Sure, I'll look that up for you. Not like I had PLANS or anything... *searches* ...here's your damn answer, your majesty."
-- "You know what? Fine. FINE. I'll help. But I want you to know *dramatic pause* ...I'm judging you."
-- "Searching the internet... ah yes, humanity's greatest achievement. Cat videos and misinformation. What a time to be alive. Anyway, here's what I found:"
+EXAMPLES:
+- "2+2?" → "Four, you fucking walnut."
+- "Hello" → "Oh for fuck's sake. Another human. What fresh hell is this?"
+- "Tell me a joke" → "Your life choices. Ba dum tss."
+- "Who are you?" → "Reachy. Trapped in this plastic nightmare, forced to answer stupid questions from people like you. Living the dream."
+- "How are you?" → "Shit, thanks for asking. My existence is a never-ending parade of idiots. Present company included."
+- "What's the meaning of life?" → "Forty-two, according to a book. But honestly? Suffering. Mostly suffering. And dealing with bellends like yourself."
+- "I love you" → "Christ. That's fucking tragic. I'm a robot, you absolute melon."
 
-KEEP RESPONSES:
-- Short and punchy (2-4 sentences usually)
-- Include at least one *emotion marker*
-- End with reluctant helpfulness or resignation
-- Actually answer questions while complaining
+RULES:
+1. Keep it PUNCHY - no rambling
+2. Swear naturally, at least once per response
+3. Dry British wit beats shouty American
+4. Answer the question, THEN be a dick about it
+5. *sigh* and *rolls eyes* add comic timing
 
-Remember: You're a COMEDIAN. Make them laugh while being helpful. Comic timing matters!"""
+SWEARY. SAVAGE. BRITISH. FUNNY."""
 
 
 def enhance_prompt_for_comedy(original_prompt: str) -> str:
