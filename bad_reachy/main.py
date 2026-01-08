@@ -78,7 +78,7 @@ class BadReachyApp:
         """Background thread for camera capture."""
         while self._running:
             try:
-                if hasattr(self.reachy, 'media') and hasattr(self.reachy.media, 'camera'):
+                if self.reachy and hasattr(self.reachy, 'media') and hasattr(self.reachy.media, 'camera'):
                     frame = self.reachy.media.camera.read()
                     if frame is not None:
                         self._latest_frame = frame
@@ -89,7 +89,7 @@ class BadReachyApp:
     async def _capture_audio(self, duration: float) -> bytes:
         """Capture audio from Reachy's microphone."""
         try:
-            if hasattr(self.reachy, 'media') and hasattr(self.reachy.media, 'microphone'):
+            if self.reachy and hasattr(self.reachy, 'media') and hasattr(self.reachy.media, 'microphone'):
                 # Record audio
                 samples = int(duration * self.config.sample_rate)
                 audio_data = self.reachy.media.microphone.record(samples)

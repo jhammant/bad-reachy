@@ -10,13 +10,28 @@ import sys
 
 
 def main():
-    from reachy_mini import ReachyMini
     from bad_reachy import BadReachyApp
+    import os
 
     print("Starting Bad Reachy... *sigh*")
-    # spawn_daemon=True to start our own daemon if needed
-    # localhost_only=False to connect to any available daemon
-    reachy = ReachyMini(spawn_daemon=True, localhost_only=False, timeout=15.0)
+
+    # Check if we should use simulation mode
+    use_sim = os.getenv("USE_SIM", "false").lower() == "true"
+
+    reachy = None
+    if not use_sim:
+        try:
+            from reachy_mini import ReachyMini
+            # spawn_daemon=True to start our own daemon if needed
+            reachy = ReachyMini(spawn_daemon=True, localhost_only=False, timeout=15.0)
+            print("[REACHY] Connected to robot hardware")
+        except Exception as e:
+            print(f"[REACHY] Hardware not available: {e}")
+            print("[REACHY] Running in software-only mode (no robot control)")
+            reachy = None
+    else:
+        print("[REACHY] Running in simulation mode (USE_SIM=true)")
+
     app = BadReachyApp(reachy)
     app.run()
 
