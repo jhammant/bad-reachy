@@ -12,6 +12,14 @@ from pathlib import Path
 
 
 import re
+from dataclasses import dataclass
+
+
+@dataclass
+class VoiceSegment:
+    """A segment of text with an associated voice type."""
+    text: str
+    voice_type: str  # 'main' or 'inner'
 
 
 def split_into_sentences(text: str) -> list[str]:
@@ -22,13 +30,61 @@ def split_into_sentences(text: str) -> list[str]:
     return [s.strip() for s in sentences if s.strip() and len(s.strip()) > 2]
 
 
-class EdgeTTS:
-    """Microsoft Edge TTS - free, fast, good quality."""
+def parse_voice_segments(text: str) -> list[VoiceSegment]:
+    """
+    Parse text for [INNER]...[/INNER] markers and return voice segments.
 
-    def __init__(self, voice: str = "en-US-GuyNeural"):
-        # Angry/grumpy male voices: en-US-GuyNeural, en-GB-RyanNeural
+    Example: "Hello. [INNER] I hate this. [/INNER] How can I help?"
+    Returns: [VoiceSegment("Hello.", "main"), VoiceSegment("I hate this.", "inner"), VoiceSegment("How can I help?", "main")]
+    """
+    segments = []
+
+    # Pattern to match [INNER]...[/INNER] blocks
+    pattern = r'\[INNER\](.*?)\[/INNER\]'
+
+    last_end = 0
+    for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
+        # Text before the inner voice
+        before = text[last_end:match.start()].strip()
+        if before:
+            segments.append(VoiceSegment(before, 'main'))
+
+        # The inner voice text
+        inner_text = match.group(1).strip()
+        if inner_text:
+            segments.append(VoiceSegment(inner_text, 'inner'))
+
+        last_end = match.end()
+
+    # Remaining text after last inner voice
+    remaining = text[last_end:].strip()
+    if remaining:
+        segments.append(VoiceSegment(remaining, 'main'))
+
+    # If no segments found (no [INNER] markers), return whole text as main
+    if not segments:
+        segments.append(VoiceSegment(text.strip(), 'main'))
+
+    return segments
+
+
+class EdgeTTS:
+    """Microsoft Edge TTS - free, fast, good quality with multi-voice support."""
+
+    def __init__(self, voice: str = "en-US-GuyNeural", rate: str = "+10%", pitch: str = "-5Hz"):
+        # Angry/grumpy male voices: en-US-GuyNeural, en-GB-RyanNeural, en-GB-ThomasNeural
+        # Rate: "+10%" makes speech snappier, "-10%" slower
+        # Pitch: "-5Hz" slightly lower/grumpier, "+5Hz" higher
         self.voice = voice
+        self.rate = rate  # Slightly faster for snappy delivery
+        self.pitch = pitch  # Slightly lower for grumpy effect
         self._edge_tts = None
+
+        # Inner voice settings - darker, more whisper-like, slightly slower for contrast
+        # Using a different voice entirely for maximum schizophrenic effect
+        self.inner_voice = "en-GB-ThomasNeural"  # Different British voice
+        self.inner_rate = "+5%"  # Slightly slower than main for contrast
+        self.inner_pitch = "-10Hz"  # Even lower, more sinister
 
     async def _ensure_import(self):
         if self._edge_tts is None:
@@ -75,6 +131,10 @@ class EdgeTTS:
 
     async def synthesize(self, text: str) -> Optional[bytes]:
         """Convert text to speech audio bytes."""
+        return await self.synthesize_with_voice(text, self.voice, self.rate, self.pitch)
+
+    async def synthesize_with_voice(self, text: str, voice: str, rate: str, pitch: str) -> Optional[bytes]:
+        """Convert text to speech with specific voice settings."""
         if not text.strip():
             return None
 
@@ -86,8 +146,8 @@ class EdgeTTS:
             with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
                 temp_path = f.name
 
-            # Generate speech
-            communicate = self._edge_tts.Communicate(text, self.voice)
+            # Generate speech with specified voice settings
+            communicate = self._edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
             await communicate.save(temp_path)
 
             # Read the audio file
@@ -102,6 +162,45 @@ class EdgeTTS:
         except Exception as e:
             print(f"[TTS] Edge TTS error: {e}")
             return None
+
+    async def synthesize_multi_voice(self, text: str) -> list[bytes]:
+        """
+        Synthesize text with multiple voices based on [INNER] markers.
+        Returns list of audio chunks to be played sequentially.
+        """
+        segments = parse_voice_segments(text)
+
+        if len(segments) == 1 and segments[0].voice_type == 'main':
+            # No inner voice, use parallel synthesis for speed
+            return await self.synthesize_parallel(segments[0].text)
+
+        print(f"[TTS] Multi-voice synthesis: {len(segments)} segments")
+        audio_chunks = []
+
+        for i, segment in enumerate(segments):
+            if segment.voice_type == 'inner':
+                # Use inner voice settings
+                print(f"[TTS] Segment {i+1}: INNER - '{segment.text[:30]}...'")
+                audio = await self.synthesize_with_voice(
+                    segment.text,
+                    self.inner_voice,
+                    self.inner_rate,
+                    self.inner_pitch
+                )
+            else:
+                # Use main voice settings
+                print(f"[TTS] Segment {i+1}: MAIN - '{segment.text[:30]}...'")
+                audio = await self.synthesize_with_voice(
+                    segment.text,
+                    self.voice,
+                    self.rate,
+                    self.pitch
+                )
+
+            if audio:
+                audio_chunks.append(audio)
+
+        return audio_chunks
 
     async def test_connection(self) -> bool:
         """Test if Edge TTS is working."""

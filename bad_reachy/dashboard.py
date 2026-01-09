@@ -599,7 +599,18 @@ class BadDashboard:
     def start(self):
         """Start the dashboard server."""
         def run_server():
-            uvicorn.run(self._app, host="0.0.0.0", port=self.port, log_level="warning")
+            try:
+                print(f"[DASHBOARD] Starting uvicorn on port {self.port}...")
+                uvicorn.run(self._app, host="0.0.0.0", port=self.port, log_level="info")
+            except Exception as e:
+                print(f"[DASHBOARD] Server crashed: {e}")
+                import traceback
+                traceback.print_exc()
+
         self._server_thread = threading.Thread(target=run_server, daemon=True)
         self._server_thread.start()
+
+        # Wait for server to bind
+        time.sleep(1.0)
+
         print(f"[DASHBOARD] Started on http://0.0.0.0:{self.port}")

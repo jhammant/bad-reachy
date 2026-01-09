@@ -101,8 +101,9 @@ class BadReachyApp:
         # Use fast TTS if available (Edge TTS)
         self.use_fast_tts = EDGE_TTS_AVAILABLE
         if self.use_fast_tts:
-            self.fast_tts = EdgeTTS(voice="en-GB-RyanNeural")  # UK male voice
-            print("[TTS] Edge TTS enabled (fast, UK voice)")
+            # UK male voice, faster rate (+15%) for snappy delivery, slightly lower pitch for grumpy tone
+            self.fast_tts = EdgeTTS(voice="en-GB-RyanNeural", rate="+15%", pitch="-5Hz")
+            print("[TTS] Edge TTS enabled (fast, UK voice, snappy delivery)")
         else:
             self.tts = ChatterboxTTS(self.config.tts_server_url)
             print("[TTS] Using Chatterbox (slow)")
@@ -127,14 +128,13 @@ class BadReachyApp:
         self._direct_camera = None
         self._use_direct_audio = False
 
-        # Always try to initialize direct camera as fallback (SDK camera often has GStreamer issues)
+        # Only use direct camera if SDK is NOT connected
+        # When SDK is connected, it holds the camera via daemon - don't compete for it
         if not self.reachy or not hasattr(self.reachy, 'media'):
             print("[BAD] Reachy SDK unavailable, trying direct hardware access...")
             self._init_direct_hardware()
         else:
-            # SDK available but camera might still fail - init direct camera as backup
-            print("[BAD] SDK connected, initializing direct camera backup...")
-            self._init_direct_camera_only()
+            print("[BAD] SDK connected - using SDK camera (not opening direct camera)")
 
     def _init_direct_camera_only(self):
         """Initialize direct camera as backup when SDK camera fails."""
@@ -196,22 +196,41 @@ class BadReachyApp:
 
     def _camera_capture_loop(self):
         """Background thread for camera capture."""
+        frame_count = 0
+        error_count = 0
+        print(f"[CAMERA] Capture loop starting. reachy={self.reachy is not None}, direct_cam={self._direct_camera is not None}")
+        if self._direct_camera:
+            print(f"[CAMERA] Direct camera opened={self._direct_camera.isOpened()}")
         while self._running:
             try:
                 frame = None
                 # Try Reachy SDK first
                 if self.reachy and hasattr(self.reachy, 'media') and hasattr(self.reachy.media, 'camera'):
                     frame = self.reachy.media.camera.read()
-                # Fallback to direct camera
-                elif self._direct_camera and self._direct_camera.isOpened():
+                    if frame_count == 0:
+                        if frame is not None:
+                            print(f"[CAMERA] SDK camera working: {frame.shape}")
+                        else:
+                            print("[CAMERA] SDK camera returned None")
+
+                # Fallback to direct camera if SDK didn't work
+                if frame is None and self._direct_camera and self._direct_camera.isOpened():
                     ret, frame = self._direct_camera.read()
                     if not ret:
                         frame = None
 
                 if frame is not None:
                     self._latest_frame = frame
+                    frame_count += 1
+                    if frame_count == 1:
+                        print(f"[CAMERA] First frame captured: {frame.shape}")
+
             except Exception as e:
-                pass
+                error_count += 1
+                if error_count <= 5:
+                    print(f"[CAMERA] Error #{error_count}: {e}")
+                    import traceback
+                    traceback.print_exc()
             time.sleep(0.1)
 
     async def _capture_audio(self, duration: float) -> bytes:
@@ -269,9 +288,10 @@ class BadReachyApp:
     async def _listen(self) -> Optional[str]:
         """Listen for user speech."""
         # ECHO SUPPRESSION: Wait after TTS finishes to avoid hearing ourselves
+        # Use longer window (3s) to catch room reverb and speaker echo
         time_since_tts = time.time() - self.context.last_tts_end_time
-        if time_since_tts < 1.5:  # 1.5s echo suppression window - longer to catch room reverb
-            wait_time = 1.5 - time_since_tts
+        if time_since_tts < 3.0:  # 3s echo suppression window
+            wait_time = 3.0 - time_since_tts
             print(f"[ECHO] Suppressing for {wait_time:.1f}s")
             await asyncio.sleep(wait_time)
 
@@ -296,9 +316,14 @@ class BadReachyApp:
             text_lower = text.lower().strip()
 
             # Always ignore very short generic phrases (likely echo/noise)
+            # Includes common TTS echoes and background noise transcriptions
             ignore_always = ['thank you', 'thanks', 'okay', 'ok', 'yes', 'no',
                             'cheers', 'right', 'sure', 'yeah', 'yep', 'nope',
-                            'and', 'the', 'a', 'um', 'uh', 'hmm']
+                            'and', 'the', 'a', 'um', 'uh', 'hmm', 'oh', 'ah',
+                            'whee', 'wee', 'bye', 'hi', 'hey', 'hello', 'huh',
+                            'what', 'well', 'so', 'now', 'then', 'here', 'there',
+                            'you', 'me', 'we', 'they', 'it', 'this', 'that',
+                            'good', 'great', 'nice', 'fine', 'alright', 'all right']
             for phrase in ignore_always:
                 if text_lower == phrase or text_lower == phrase + '.':
                     print(f"[STT] Ignoring generic: {text}")
@@ -377,14 +402,14 @@ class BadReachyApp:
         clean_text = self.emotions.strip_emotion_markers(text)
         clean_text = self.comedy.add_comic_emphasis(clean_text)
 
-        # Use PARALLEL chunked TTS for speed
-        print(f"[TTS-DEBUG] use_fast_tts={self.use_fast_tts}, has_parallel={hasattr(self.fast_tts, 'synthesize_parallel')}")
-        if self.use_fast_tts and hasattr(self.fast_tts, 'synthesize_parallel'):
+        # Use MULTI-VOICE TTS for [INNER] markers (schizophrenic effect)
+        print(f"[TTS-DEBUG] use_fast_tts={self.use_fast_tts}, has_multi_voice={hasattr(self.fast_tts, 'synthesize_multi_voice')}")
+        if self.use_fast_tts and hasattr(self.fast_tts, 'synthesize_multi_voice'):
             from .tts_fast import play_audio_chunks
 
-            # Request all chunks in parallel - much faster!
-            print(f"[TTS] Using parallel synthesis for: {clean_text[:50]}...")
-            audio_chunks = await self.fast_tts.synthesize_parallel(clean_text)
+            # Use multi-voice synthesis to handle [INNER] markers with different voice
+            print(f"[TTS] Using multi-voice synthesis for: {clean_text[:50]}...")
+            audio_chunks = await self.fast_tts.synthesize_multi_voice(clean_text)
 
             if audio_chunks:
                 # Play chunks sequentially (they were generated in parallel)
