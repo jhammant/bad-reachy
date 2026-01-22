@@ -269,7 +269,14 @@ class EmotionEngine:
     def strip_emotion_markers(self, text: str) -> str:
         """Remove emotion markers from text before TTS."""
         # Remove *emotion* patterns
-        return re.sub(r'\*[^*]+\*', '', text).strip()
+        text = re.sub(r'\*[^*]+\*', '', text)
+        # Remove (emotion) patterns
+        text = re.sub(r'\([^)]*(?:sigh|groan|sarcast|mutter|pause|eye.?roll|stare|deadpan|whisper|shout)[^)]*\)', '', text, flags=re.IGNORECASE)
+        # Remove [emotion] patterns
+        text = re.sub(r'\[[^\]]*(?:sigh|groan|sarcast|mutter|pause|eye.?roll|stare|deadpan|whisper|shout)[^\]]*\]', '', text, flags=re.IGNORECASE)
+        # Remove "sarcastically:" style prefixes
+        text = re.sub(r'\b(?:sarcastically|dramatically|quietly|loudly|muttering|sighing)\s*[:\-]+\s*', '', text, flags=re.IGNORECASE)
+        return text.strip()
 
     async def express_emotion(self, emotion: Emotion, duration: float = 1.5):
         """Perform head movements for an emotion."""

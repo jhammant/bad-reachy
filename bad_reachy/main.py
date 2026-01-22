@@ -622,8 +622,8 @@ class BadReachyApp:
         """What to do when idle - occasional grumpy comments."""
         idle_time = time.time() - self.context.last_speech_time
 
-        # After 20 seconds of silence, maybe say something grumpy (was 45s - now snappier)
-        if idle_time > 20 and self.context.interactions > 0:
+        # After 120 seconds of silence, maybe say something grumpy (increased for demo)
+        if idle_time > 120 and self.context.interactions > 0:
             self.context.last_speech_time = time.time()  # Reset timer
 
             grumpy_idle_comments = [
