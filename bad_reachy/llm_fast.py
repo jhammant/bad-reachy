@@ -6,7 +6,8 @@ Groq has extremely fast inference - ~10x faster than local.
 
 import httpx
 import os
-from typing import List, Dict, Optional
+import asyncio
+from typing import List, Dict, Optional, AsyncIterator
 
 
 class GroqLLM:
@@ -72,6 +73,65 @@ class GroqLLM:
 
     def clear_history(self):
         self.conversation_history = []
+
+    async def chat_stream(self, user_message: str) -> AsyncIterator[str]:
+        """Stream response tokens as they arrive - MUCH snappier!"""
+        if not self.api_key:
+            yield "Shit, no API key."
+            return
+
+        self.conversation_history.append({
+            "role": "user",
+            "content": user_message
+        })
+
+        messages = [
+            {"role": "system", "content": self.system_prompt}
+        ] + self.conversation_history[-4:]
+
+        full_response = ""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                async with client.stream(
+                    "POST",
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "temperature": 1.2,
+                        "max_tokens": 150,
+                        "stream": True
+                    }
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            if data == "[DONE]":
+                                break
+                            try:
+                                import json
+                                chunk = json.loads(data)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    full_response += content
+                                    yield content
+                            except:
+                                pass
+
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": full_response
+            })
+
+        except Exception as e:
+            print(f"[LLM-Groq] Stream error: {e}")
+            yield "Shit broke."
 
     async def test_connection(self) -> bool:
         """Test if Groq API is reachable."""

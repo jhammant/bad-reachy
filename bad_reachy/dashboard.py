@@ -54,6 +54,7 @@ class BadDashboard:
         # Callbacks for TTS
         self.on_voice_change = None  # Callback when voice changes
         self.on_play_sound = None    # Callback to play sound effect
+        self.on_say_text = None      # Callback to say arbitrary text
 
         self._load_voices()
         self._load_sounds()
@@ -220,6 +221,15 @@ class BadDashboard:
             """Test the current voice."""
             if self.on_play_sound:
                 await self.on_play_sound("_test_", f"tts:{text}")
+                return {"status": "ok", "text": text}
+            return JSONResponse({"error": "TTS not ready"}, status_code=500)
+
+        # Manual say endpoint
+        @self._app.post("/api/say")
+        async def say_text(text: str = Form(...)):
+            """Say arbitrary text through TTS."""
+            if self.on_say_text:
+                await self.on_say_text(text)
                 return {"status": "ok", "text": text}
             return JSONResponse({"error": "TTS not ready"}, status_code=500)
 
@@ -459,6 +469,15 @@ class BadDashboard:
                     <div class="last-response" id="last-response">Waiting...</div>
                 </div>
                 <div class="card">
+                    <h2>🗣️ Manual Say</h2>
+                    <p style="color: #888; margin-bottom: 10px;">Type text to make Reachy say it</p>
+                    <textarea id="say-text" rows="3" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: #fff; font-size: 1em; resize: vertical;" placeholder="Type something for Reachy to say... Use [INNER]text[/INNER] for inner voice"></textarea>
+                    <div style="margin-top: 10px; display: flex; gap: 10px;">
+                        <button class="btn" onclick="sayText()">Say This</button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('say-text').value = ''">Clear</button>
+                    </div>
+                </div>
+                <div class="card">
                     <h2>📜 Conversation</h2>
                     <div class="conversation" id="conversation"></div>
                 </div>
@@ -567,6 +586,18 @@ class BadDashboard:
             const fd = new FormData();
             fd.append('text', 'Oh great, another test. *sigh* This is Bad Reachy speaking.');
             await fetch('/api/test-voice', {method: 'POST', body: fd});
+        }
+
+        async function sayText() {
+            const text = document.getElementById('say-text').value.trim();
+            if (!text) return alert('Enter some text first');
+            const fd = new FormData();
+            fd.append('text', text);
+            const r = await fetch('/api/say', {method: 'POST', body: fd});
+            if (r.ok) {
+                document.getElementById('say-text').style.borderColor = '#4ecdc4';
+                setTimeout(() => document.getElementById('say-text').style.borderColor = 'rgba(255,255,255,0.2)', 1000);
+            }
         }
 
         async function playSound(name) {

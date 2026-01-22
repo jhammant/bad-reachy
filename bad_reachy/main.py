@@ -7,6 +7,7 @@ A sarcastic, sweary robot assistant with attitude.
 import asyncio
 import time
 import threading
+import os
 import numpy as np
 from enum import Enum
 from typing import Optional
@@ -28,12 +29,21 @@ from .dashboard import BadDashboard
 from .tools import ToolManager, TOOL_AWARE_PROMPT_ADDITION
 from .comedy import ComedyEngine, COMEDY_SYSTEM_PROMPT
 
+# Try to import audio-synchronized head movement
+try:
+    from .audio import HeadWobbler
+    HEAD_WOBBLER_AVAILABLE = True
+except ImportError:
+    HEAD_WOBBLER_AVAILABLE = False
+    HeadWobbler = None
+
 # Try to import fast TTS/STT
 try:
-    from .tts_fast import EdgeTTS, play_audio_fast
+    from .tts_fast import EdgeTTS, play_audio_fast, strip_voice_markers, StreamingTTSBuffer
     EDGE_TTS_AVAILABLE = True
 except ImportError:
     EDGE_TTS_AVAILABLE = False
+    StreamingTTSBuffer = None
 
 try:
     from .stt_fast import FastSTT
@@ -116,6 +126,17 @@ class BadReachyApp:
         self.comedy = ComedyEngine(tts_for_comedy)
         self.dashboard = BadDashboard(port=8080)
 
+        # Audio-synchronized head movement
+        self.head_wobbler = None
+        if HEAD_WOBBLER_AVAILABLE and self.reachy:
+            self.head_wobbler = HeadWobbler(
+                set_offsets_callback=self._apply_head_offsets,
+                sample_rate=16000
+            )
+            print("[HEAD] Audio-synchronized head movement enabled")
+        else:
+            print("[HEAD] Head wobbler not available (no reachy or module missing)")
+
         # Camera frame for dashboard
         self._latest_frame = None
         self._camera_thread = None
@@ -135,6 +156,67 @@ class BadReachyApp:
             self._init_direct_hardware()
         else:
             print("[BAD] SDK connected - using SDK camera (not opening direct camera)")
+
+        # Base head position for wobble offsets
+        self._base_head_position = None
+
+    def _apply_head_offsets(self, offsets: tuple) -> None:
+        """
+        Apply head movement offsets synchronized with audio.
+        Called by HeadWobbler from background thread.
+
+        Args:
+            offsets: (pitch_rad, yaw_rad, roll_rad) relative offsets
+        """
+        if not self.reachy or not hasattr(self.reachy, 'head'):
+            return
+
+        pitch_rad, yaw_rad, roll_rad = offsets
+
+        try:
+            # Get current (or cached base) position
+            if self._base_head_position is None:
+                # Cache the neutral position on first call
+                head = self.reachy.head
+                if hasattr(head, 'neck'):
+                    self._base_head_position = {
+                        'roll': getattr(head.neck.roll, 'goal_position', 0),
+                        'pitch': getattr(head.neck.pitch, 'goal_position', 0),
+                        'yaw': getattr(head.neck.yaw, 'goal_position', 0),
+                    }
+                else:
+                    self._base_head_position = {'roll': 0, 'pitch': 0, 'yaw': 0}
+
+            # Apply offsets to base position (convert radians to degrees)
+            import math
+            new_roll = self._base_head_position['roll'] + math.degrees(roll_rad)
+            new_pitch = self._base_head_position['pitch'] + math.degrees(pitch_rad)
+            new_yaw = self._base_head_position['yaw'] + math.degrees(yaw_rad)
+
+            # Clamp to safe ranges
+            new_roll = max(-15, min(15, new_roll))
+            new_pitch = max(-30, min(30, new_pitch))
+            new_yaw = max(-45, min(45, new_yaw))
+
+            # Apply to robot
+            head = self.reachy.head
+            if hasattr(head, 'neck'):
+                if hasattr(head.neck, 'roll'):
+                    head.neck.roll.goal_position = new_roll
+                if hasattr(head.neck, 'pitch'):
+                    head.neck.pitch.goal_position = new_pitch
+                if hasattr(head.neck, 'yaw'):
+                    head.neck.yaw.goal_position = new_yaw
+
+        except Exception as e:
+            # Don't spam errors - head movement is best-effort
+            pass
+
+    def _reset_head_wobble(self) -> None:
+        """Reset head wobble state and return to base position."""
+        if self.head_wobbler:
+            self.head_wobbler.reset()
+        self._base_head_position = None
 
     def _init_direct_camera_only(self):
         """Initialize direct camera as backup when SDK camera fails."""
@@ -288,18 +370,20 @@ class BadReachyApp:
     async def _listen(self) -> Optional[str]:
         """Listen for user speech."""
         # ECHO SUPPRESSION: Wait after TTS finishes to avoid hearing ourselves
-        # Use longer window (3s) to catch room reverb and speaker echo
+        # Reduced from 3s to 1.5s for snappier response
         time_since_tts = time.time() - self.context.last_tts_end_time
-        if time_since_tts < 3.0:  # 3s echo suppression window
-            wait_time = 3.0 - time_since_tts
+        if time_since_tts < 1.5:  # 1.5s echo suppression window
+            wait_time = 1.5 - time_since_tts
             print(f"[ECHO] Suppressing for {wait_time:.1f}s")
             await asyncio.sleep(wait_time)
 
         self.context.state = AppState.LISTENING
         self.dashboard.update_state("LISTENING")
 
-        # Don't move head while listening - too frequent (every 3s)
-        # Only move when speaking for better effect
+        # Reset head wobbler when starting to listen (stops any ongoing speech movement)
+        if self.head_wobbler:
+            self.head_wobbler.reset()
+            self._base_head_position = None  # Return head to neutral
 
         if self.use_fast_stt:
             # Fast path: VAD-based recording + Groq transcription
@@ -332,18 +416,24 @@ class BadReachyApp:
                     return None
 
             # Check for wake word - only respond if they say "reachy" or similar
-            wake_words = ['reachy', 'richie', 'richi', 'reach', 'richy', 'reachi']
-            has_wake_word = any(w in text_lower for w in wake_words)
+            # DEMO_MODE disables wake word requirement for scripted demos
+            demo_mode = os.getenv("DEMO_MODE", "false").lower() == "true"
+            wake_words = ['reachy', 'richie', 'richi', 'reach', 'richy', 'reachi', 'riachi']
 
-            # STRICT: Always require wake word unless it's a direct question
-            # This prevents responding to background noise/music/speech
-            if not has_wake_word:
-                # Only allow direct questions (must end with ?) and be short (likely real question)
-                is_direct_question = text_lower.endswith('?') and len(text_lower) < 50
-                if not is_direct_question:
-                    print(f"[STT] No wake word, ignoring: {text}")
-                    self.context.last_speech_time = time.time()
-                    return None
+            if not demo_mode:
+                has_wake_word = any(w in text_lower for w in wake_words)
+
+                # STRICT: Always require wake word unless it's a direct question
+                # This prevents responding to background noise/music/speech
+                if not has_wake_word:
+                    # Only allow direct questions (must end with ?) and be short (likely real question)
+                    is_direct_question = text_lower.endswith('?') and len(text_lower) < 50
+                    if not is_direct_question:
+                        print(f"[STT] No wake word, ignoring: {text}")
+                        self.context.last_speech_time = time.time()
+                        return None
+            else:
+                print(f"[DEMO] Wake word bypassed - responding to: {text}")
 
             # Strip wake word from text for cleaner input
             for w in wake_words:
@@ -384,6 +474,92 @@ class BadReachyApp:
         self.context.last_response = response
         return response
 
+    async def _think_and_speak_streaming(self, user_input: str):
+        """
+        STREAMING: Generate response AND start speaking as soon as we have a complete sentence.
+        This dramatically reduces perceived latency!
+        """
+        self.context.state = AppState.THINKING
+        self.dashboard.update_state("THINKING")
+
+        # Fire-and-forget emotion
+        asyncio.create_task(self.emotions.express_emotion(Emotion.THINKING, duration=0.3))
+
+        # Check for tools first (can't stream with tools)
+        tool_needed = self.tools.needs_tool(user_input)
+        if tool_needed == "search":
+            # Fall back to non-streaming for tool use
+            response = await self._think(user_input)
+            await self._speak(response)
+            return response
+
+        # STREAMING PATH - much faster perceived response
+        buffer = StreamingTTSBuffer()
+        full_response = ""
+        first_sentence_spoken = False
+
+        # Use streaming LLM if available
+        if hasattr(self.llm, 'chat_stream'):
+            async for token in self.llm.chat_stream(user_input):
+                full_response += token
+
+                # Check for complete sentences
+                sentences = buffer.add_text(token)
+                for sentence in sentences:
+                    if sentence:
+                        if not first_sentence_spoken:
+                            # Switch to speaking state on first sentence
+                            self.context.state = AppState.SPEAKING
+                            self.dashboard.update_state("SPEAKING")
+                            first_sentence_spoken = True
+                            print(f"[STREAM] First sentence: {sentence}")
+
+                        # Synthesize and play this sentence immediately
+                        await self._speak_sentence(sentence)
+
+            # Flush any remaining text
+            remaining = buffer.flush()
+            if remaining:
+                await self._speak_sentence(remaining)
+        else:
+            # Fallback to non-streaming
+            response = await self.llm.chat(user_input)
+            await self._speak(response)
+            full_response = response
+
+        self.context.last_response = full_response
+        self.context.last_tts_end_time = time.time()
+        return full_response
+
+    async def _speak_sentence(self, text: str):
+        """Speak a single sentence - used for streaming."""
+        if not text.strip():
+            return
+
+        # Clean the text
+        clean_text = self.emotions.strip_emotion_markers(text)
+        clean_text = self.comedy.add_comic_emphasis(clean_text)
+
+        # Detect emotion for this sentence
+        emotion = self.emotions.detect_emotion_from_text(text)
+        asyncio.create_task(self.emotions.express_emotion(emotion, duration=0.5))
+
+        if self.use_fast_tts:
+            # Check for [INNER] markers
+            if '[INNER]' in text.upper() or '[/INNER]' in text.upper():
+                audio_chunks = await self.fast_tts.synthesize_multi_voice(clean_text)
+                for audio in audio_chunks:
+                    if audio:
+                        await play_audio_fast(audio, is_mp3=True, head_wobbler=self.head_wobbler)
+            else:
+                audio = await self.fast_tts.synthesize(clean_text)
+                if audio:
+                    await play_audio_fast(audio, is_mp3=True, head_wobbler=self.head_wobbler)
+        else:
+            audio = await self.tts.synthesize(clean_text)
+            if audio:
+                await play_audio_on_reachy(self.reachy, audio)
+
     async def _speak(self, text: str):
         """Speak with attitude - FAST parallel TTS with head movements."""
         self.context.state = AppState.SPEAKING
@@ -403,7 +579,8 @@ class BadReachyApp:
         clean_text = self.comedy.add_comic_emphasis(clean_text)
 
         # Use MULTI-VOICE TTS for [INNER] markers (schizophrenic effect)
-        print(f"[TTS-DEBUG] use_fast_tts={self.use_fast_tts}, has_multi_voice={hasattr(self.fast_tts, 'synthesize_multi_voice')}")
+        if self.use_fast_tts:
+            print(f"[TTS-DEBUG] use_fast_tts={self.use_fast_tts}, has_multi_voice={hasattr(self.fast_tts, 'synthesize_multi_voice')}")
         if self.use_fast_tts and hasattr(self.fast_tts, 'synthesize_multi_voice'):
             from .tts_fast import play_audio_chunks
 
@@ -419,14 +596,14 @@ class BadReachyApp:
                         asyncio.create_task(
                             self.emotions.express_emotion(Emotion.SPEAKING, duration=0.5)
                         )
-                        await play_audio_fast(audio, is_mp3=True)
+                        await play_audio_fast(audio, is_mp3=True, head_wobbler=self.head_wobbler)
 
                 self.context.last_tts_end_time = time.time()
         elif self.use_fast_tts:
             # Fallback to single synthesis
             audio = await self.fast_tts.synthesize(clean_text)
             if audio:
-                await play_audio_fast(audio, is_mp3=True)
+                await play_audio_fast(audio, is_mp3=True, head_wobbler=self.head_wobbler)
                 self.context.last_tts_end_time = time.time()
         else:
             audio = await self.tts.synthesize(clean_text)
@@ -445,8 +622,8 @@ class BadReachyApp:
         """What to do when idle - occasional grumpy comments."""
         idle_time = time.time() - self.context.last_speech_time
 
-        # After 45 seconds of silence, maybe say something grumpy
-        if idle_time > 45 and self.context.interactions > 0:
+        # After 20 seconds of silence, maybe say something grumpy (was 45s - now snappier)
+        if idle_time > 20 and self.context.interactions > 0:
             self.context.last_speech_time = time.time()  # Reset timer
 
             grumpy_idle_comments = [
@@ -492,22 +669,17 @@ class BadReachyApp:
                     print(f"[USER] {user_input}")
                     print(f"[TIMING] Listen: {t_listen:.2f}s")
 
-                    # Generate response
+                    # Use STREAMING for faster perceived response
                     t1 = time.time()
-                    response = await self._think(user_input)
-                    t_think = time.time() - t1
+                    response = await self._think_and_speak_streaming(user_input)
+                    t_total = time.time() - t1
                     print(f"[BAD] {response}")
-                    print(f"[TIMING] Think: {t_think:.2f}s")
+                    print(f"[TIMING] Think+Speak (streaming): {t_total:.2f}s | Total: {t_listen + t_total:.2f}s")
 
-                    # Speak response
-                    t2 = time.time()
-                    await self._speak(response)
-                    t_speak = time.time() - t2
-                    print(f"[TIMING] Speak: {t_speak:.2f}s | Total: {t_listen + t_think + t_speak:.2f}s")
-
-                    # Update dashboard
+                    # Update dashboard (strip [INNER] markers for display)
                     self.context.interactions += 1
-                    self.dashboard.add_interaction(user_input, response)
+                    display_response = strip_voice_markers(response) if EDGE_TTS_AVAILABLE else response
+                    self.dashboard.add_interaction(user_input, display_response)
 
                 else:
                     # Check for idle behavior
@@ -570,8 +742,19 @@ class BadReachyApp:
         self._camera_thread = threading.Thread(target=self._camera_capture_loop, daemon=True)
         self._camera_thread.start()
 
+        # Start head wobbler for audio-synchronized movement
+        if self.head_wobbler:
+            self.head_wobbler.start()
+            print("[HEAD] Head wobbler started")
+
         # Set up dashboard camera feed
         self.dashboard.get_frame = self._get_latest_frame
+
+        # Set up manual say callback
+        async def on_say_text(text: str):
+            print(f"[MANUAL] Saying: {text}")
+            await self._speak(text)
+        self.dashboard.on_say_text = on_say_text
 
         # Start dashboard
         self.dashboard.start()
@@ -583,6 +766,8 @@ class BadReachyApp:
             print("\n[BAD] Finally, I'm free! *dramatic sigh*")
         finally:
             self._running = False
+            if self.head_wobbler:
+                self.head_wobbler.stop()
 
     async def _async_run(self):
         """Async main runner."""
@@ -600,4 +785,6 @@ class BadReachyApp:
         """Stop the app."""
         self._running = False
         self.emotions.stop()
+        if self.head_wobbler:
+            self.head_wobbler.stop()
         print("[BAD] Shutting down. Best news I've heard all day.")

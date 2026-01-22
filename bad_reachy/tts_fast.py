@@ -30,17 +30,25 @@ def split_into_sentences(text: str) -> list[str]:
     return [s.strip() for s in sentences if s.strip() and len(s.strip()) > 2]
 
 
+def strip_voice_markers(text: str) -> str:
+    """Remove all [INNER] markers from text for display purposes."""
+    # Handle various typos/formats: [INNER], [Innner], [inner], etc.
+    pattern = r'\[/?INN*ER\]'
+    return re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
+
+
 def parse_voice_segments(text: str) -> list[VoiceSegment]:
     """
     Parse text for [INNER]...[/INNER] markers and return voice segments.
+    Handles typos like [Innner] or [inner].
 
     Example: "Hello. [INNER] I hate this. [/INNER] How can I help?"
     Returns: [VoiceSegment("Hello.", "main"), VoiceSegment("I hate this.", "inner"), VoiceSegment("How can I help?", "main")]
     """
     segments = []
 
-    # Pattern to match [INNER]...[/INNER] blocks
-    pattern = r'\[INNER\](.*?)\[/INNER\]'
+    # Pattern to match [INNER]...[/INNER] blocks - flexible for typos (INN*ER)
+    pattern = r'\[INN*ER\](.*?)\[/INN*ER\]'
 
     last_end = 0
     for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
@@ -66,6 +74,34 @@ def parse_voice_segments(text: str) -> list[VoiceSegment]:
         segments.append(VoiceSegment(text.strip(), 'main'))
 
     return segments
+
+
+class StreamingTTSBuffer:
+    """Buffers streaming text and yields complete sentences for TTS."""
+
+    def __init__(self):
+        self.buffer = ""
+        self.sentence_endings = re.compile(r'(?<=[.!?])\s+')
+
+    def add_text(self, text: str) -> list[str]:
+        """Add text to buffer and return any complete sentences."""
+        self.buffer += text
+        sentences = []
+
+        # Find complete sentences
+        parts = self.sentence_endings.split(self.buffer)
+        if len(parts) > 1:
+            # All but last are complete sentences
+            sentences = [p.strip() for p in parts[:-1] if p.strip()]
+            self.buffer = parts[-1]
+
+        return sentences
+
+    def flush(self) -> str:
+        """Return and clear remaining buffer content."""
+        remaining = self.buffer.strip()
+        self.buffer = ""
+        return remaining
 
 
 class EdgeTTS:
@@ -272,8 +308,15 @@ async def play_audio_chunks(audio_chunks: list[bytes], is_mp3: bool = False):
             await play_audio_fast(chunk, is_mp3)
 
 
-async def play_audio_fast(audio_bytes: bytes, is_mp3: bool = False):
-    """Play audio through system speakers - handles MP3 and WAV."""
+async def play_audio_fast(audio_bytes: bytes, is_mp3: bool = False, head_wobbler=None):
+    """
+    Play audio through system speakers - handles MP3 and WAV.
+
+    Args:
+        audio_bytes: Raw audio data
+        is_mp3: Whether the audio is MP3 format
+        head_wobbler: Optional HeadWobbler to feed audio for synchronized movement
+    """
     if audio_bytes is None:
         return
 
@@ -349,6 +392,16 @@ async def play_audio_fast(audio_bytes: bytes, is_mp3: bool = False):
         max_val = np.max(np.abs(samples))
         if max_val > 1.0:
             samples = samples / max_val
+
+        # Feed audio to head wobbler for synchronized movement
+        if head_wobbler is not None:
+            try:
+                # Convert to int16 for wobbler and feed in chunks
+                samples_int16 = (samples * 32767).astype(np.int16)
+                # Feed entire buffer - wobbler will process in chunks
+                head_wobbler.feed_array(samples_int16, device_rate)
+            except Exception as e:
+                print(f"[TTS] Head wobbler feed error: {e}")
 
         print(f"[TTS] Playing {len(samples)} samples at {device_rate}Hz")
         sd.play(samples.astype(np.float32), device_rate)

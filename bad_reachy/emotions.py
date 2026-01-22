@@ -83,112 +83,115 @@ class HeadPose:
     yaw: float = 0.0    # Turn left/right (-60 to 60)
 
 
-# Emotion to movement mappings - BIGGER, MORE EXPRESSIVE movements
+# Emotion to movement mappings - MAXIMUM EXPRESSIVENESS for demo!
 EMOTION_MOVEMENTS = {
     Emotion.ANNOYED: [
-        HeadPose(roll=-15, pitch=8, yaw=25),   # Look away annoyed - BIG
-        HeadPose(roll=0, pitch=-8, yaw=0),     # Quick head shake
-        HeadPose(roll=15, pitch=8, yaw=-25),   # Look other way - BIG
-        HeadPose(roll=0, pitch=0, yaw=0),      # Back to glare
+        HeadPose(roll=-25, pitch=12, yaw=40),   # Look away annoyed - HUGE
+        HeadPose(roll=0, pitch=-12, yaw=0),     # Quick head shake
+        HeadPose(roll=25, pitch=12, yaw=-40),   # Look other way - HUGE
+        HeadPose(roll=0, pitch=0, yaw=0),       # Back to glare
     ],
     Emotion.SIGH: [
-        HeadPose(roll=0, pitch=25, yaw=0),     # Head drops down - DRAMATIC
-        HeadPose(roll=5, pitch=30, yaw=5),     # Lower with tilt
-        HeadPose(roll=-5, pitch=20, yaw=-5),   # Shake while down
-        HeadPose(roll=0, pitch=10, yaw=0),     # Slow recovery
+        HeadPose(roll=0, pitch=35, yaw=0),      # Head drops down - VERY DRAMATIC
+        HeadPose(roll=10, pitch=40, yaw=10),    # Lower with tilt
+        HeadPose(roll=-10, pitch=35, yaw=-10),  # Shake while down
+        HeadPose(roll=0, pitch=15, yaw=0),      # Slow recovery
     ],
     Emotion.EYE_ROLL: [
-        HeadPose(roll=0, pitch=-15, yaw=0),    # Look up HARD
-        HeadPose(roll=10, pitch=-20, yaw=15),  # Roll to side - EXAGGERATED
-        HeadPose(roll=-10, pitch=-15, yaw=-15),# Roll other way
-        HeadPose(roll=0, pitch=-10, yaw=0),    # Still looking up
-        HeadPose(roll=0, pitch=0, yaw=0),      # Back to center with attitude
+        HeadPose(roll=0, pitch=-25, yaw=0),     # Look up HARD
+        HeadPose(roll=20, pitch=-30, yaw=25),   # Roll to side - VERY EXAGGERATED
+        HeadPose(roll=-20, pitch=-25, yaw=-25), # Roll other way
+        HeadPose(roll=0, pitch=-15, yaw=0),     # Still looking up
+        HeadPose(roll=0, pitch=0, yaw=0),       # Back to center with attitude
     ],
     Emotion.RELUCTANT: [
-        HeadPose(roll=-8, pitch=8, yaw=-15),   # Hesitant look away
-        HeadPose(roll=0, pitch=5, yaw=0),      # Reluctant return
-        HeadPose(roll=5, pitch=-5, yaw=8),     # Fine, whatever nod
+        HeadPose(roll=-15, pitch=12, yaw=-25),  # Hesitant look away
+        HeadPose(roll=0, pitch=8, yaw=0),       # Reluctant return
+        HeadPose(roll=10, pitch=-8, yaw=15),    # Fine, whatever nod
     ],
     Emotion.GRUMBLE: [
-        HeadPose(roll=-12, pitch=15, yaw=-8),  # Grumpy head drop
-        HeadPose(roll=12, pitch=12, yaw=8),    # Shake while down
-        HeadPose(roll=-8, pitch=10, yaw=-5),   # More grumbling
-        HeadPose(roll=8, pitch=8, yaw=5),      # Keep shaking
+        HeadPose(roll=-20, pitch=20, yaw=-15),  # Grumpy head drop
+        HeadPose(roll=20, pitch=18, yaw=15),    # Shake while down
+        HeadPose(roll=-15, pitch=15, yaw=-10),  # More grumbling
+        HeadPose(roll=15, pitch=12, yaw=10),    # Keep shaking
     ],
     Emotion.SARCASTIC: [
-        HeadPose(roll=20, pitch=-8, yaw=25),   # Exaggerated tilt - BIG
-        HeadPose(roll=-20, pitch=-8, yaw=-25), # Other side - BIG
-        HeadPose(roll=10, pitch=0, yaw=10),    # Settle with attitude
-        HeadPose(roll=0, pitch=0, yaw=0),      # Back
+        HeadPose(roll=30, pitch=-12, yaw=35),   # Exaggerated tilt - HUGE
+        HeadPose(roll=-30, pitch=-12, yaw=-35), # Other side - HUGE
+        HeadPose(roll=15, pitch=0, yaw=15),     # Settle with attitude
+        HeadPose(roll=0, pitch=0, yaw=0),       # Back
     ],
     Emotion.DISMISSIVE: [
-        HeadPose(roll=0, pitch=8, yaw=35),     # Look FAR away
-        HeadPose(roll=8, pitch=12, yaw=40),    # Even more away
-        HeadPose(roll=5, pitch=10, yaw=30),    # Stay dismissive
+        HeadPose(roll=0, pitch=12, yaw=50),     # Look FAR away
+        HeadPose(roll=15, pitch=18, yaw=55),    # Even more away
+        HeadPose(roll=10, pitch=15, yaw=45),    # Stay dismissive
     ],
     Emotion.LISTENING: [
-        HeadPose(roll=8, pitch=-8, yaw=8),     # Attentive tilt
-        HeadPose(roll=0, pitch=-5, yaw=0),     # Center, looking at you
-        HeadPose(roll=-8, pitch=-8, yaw=-8),   # Other side
-        HeadPose(roll=0, pitch=-5, yaw=0),     # Back to center
+        HeadPose(roll=15, pitch=-12, yaw=15),   # Attentive tilt
+        HeadPose(roll=0, pitch=-8, yaw=0),      # Center, looking at you
+        HeadPose(roll=-15, pitch=-12, yaw=-15), # Other side
+        HeadPose(roll=0, pitch=-8, yaw=0),      # Back to center
     ],
     Emotion.THINKING: [
-        HeadPose(roll=15, pitch=-15, yaw=20),  # Look up thinking - DRAMATIC
-        HeadPose(roll=12, pitch=-12, yaw=15),  # Slight movement
-        HeadPose(roll=10, pitch=-10, yaw=10),  # Processing...
+        HeadPose(roll=25, pitch=-25, yaw=30),   # Look up thinking - VERY DRAMATIC
+        HeadPose(roll=20, pitch=-20, yaw=25),   # Slight movement
+        HeadPose(roll=15, pitch=-15, yaw=15),   # Processing...
     ],
     Emotion.SPEAKING: [
-        HeadPose(roll=5, pitch=0, yaw=8),      # Animation while talking
-        HeadPose(roll=-5, pitch=3, yaw=-8),    # Keep moving
-        HeadPose(roll=3, pitch=-3, yaw=5),     # Expressive
-        HeadPose(roll=-3, pitch=0, yaw=-5),    # More movement
-        HeadPose(roll=0, pitch=0, yaw=0),      # Center
+        HeadPose(roll=20, pitch=10, yaw=25),    # Animation while talking - MUCH MORE
+        HeadPose(roll=-20, pitch=12, yaw=-25),  # Keep moving BIG
+        HeadPose(roll=15, pitch=-8, yaw=18),    # Expressive
+        HeadPose(roll=-15, pitch=8, yaw=-18),   # More movement
+        HeadPose(roll=18, pitch=5, yaw=20),     # Keep it going
+        HeadPose(roll=-18, pitch=-5, yaw=-20),  # Other side
+        HeadPose(roll=10, pitch=0, yaw=12),     # Settling
+        HeadPose(roll=0, pitch=0, yaw=0),       # Center
     ],
     Emotion.IDLE: [
-        HeadPose(roll=0, pitch=8, yaw=0),      # Slightly bored
-        HeadPose(roll=8, pitch=5, yaw=15),     # Look around bored
-        HeadPose(roll=-8, pitch=8, yaw=-15),   # Other way
-        HeadPose(roll=0, pitch=10, yaw=0),     # Head droop
+        HeadPose(roll=0, pitch=12, yaw=0),      # Slightly bored
+        HeadPose(roll=15, pitch=8, yaw=25),     # Look around bored
+        HeadPose(roll=-15, pitch=12, yaw=-25),  # Other way
+        HeadPose(roll=0, pitch=15, yaw=0),      # Head droop
     ],
     # NEW DRAMATIC EMOTIONS
     Emotion.DOUBLE_TAKE: [
-        HeadPose(roll=0, pitch=0, yaw=20),     # Look away
-        HeadPose(roll=0, pitch=0, yaw=0),      # Look back
-        HeadPose(roll=0, pitch=0, yaw=25),     # WAIT WHAT - look away again
-        HeadPose(roll=-10, pitch=-10, yaw=0),  # Snap back with shock
-        HeadPose(roll=0, pitch=0, yaw=0),      # Settle
+        HeadPose(roll=0, pitch=0, yaw=35),      # Look away
+        HeadPose(roll=0, pitch=0, yaw=0),       # Look back
+        HeadPose(roll=0, pitch=0, yaw=40),      # WAIT WHAT - look away again
+        HeadPose(roll=-15, pitch=-15, yaw=0),   # Snap back with shock
+        HeadPose(roll=0, pitch=0, yaw=0),       # Settle
     ],
     Emotion.FACEPALM: [
-        HeadPose(roll=0, pitch=35, yaw=0),     # Head drops HARD
-        HeadPose(roll=10, pitch=40, yaw=10),   # Shake in despair
-        HeadPose(roll=-10, pitch=35, yaw=-10), # Other way
-        HeadPose(roll=0, pitch=30, yaw=0),     # Stay down
-        HeadPose(roll=0, pitch=15, yaw=0),     # Slowly recover
+        HeadPose(roll=0, pitch=45, yaw=0),      # Head drops HARD
+        HeadPose(roll=15, pitch=50, yaw=15),    # Shake in despair
+        HeadPose(roll=-15, pitch=45, yaw=-15),  # Other way
+        HeadPose(roll=0, pitch=40, yaw=0),      # Stay down
+        HeadPose(roll=0, pitch=20, yaw=0),      # Slowly recover
     ],
     Emotion.SHOCK: [
-        HeadPose(roll=0, pitch=-20, yaw=0),    # Head BACK in shock
-        HeadPose(roll=-5, pitch=-25, yaw=-10), # Recoil
-        HeadPose(roll=5, pitch=-15, yaw=10),   # Settle into disbelief
-        HeadPose(roll=0, pitch=-10, yaw=0),    # Still shocked
+        HeadPose(roll=0, pitch=-30, yaw=0),     # Head BACK in shock
+        HeadPose(roll=-10, pitch=-35, yaw=-15), # Recoil
+        HeadPose(roll=10, pitch=-25, yaw=15),   # Settle into disbelief
+        HeadPose(roll=0, pitch=-15, yaw=0),     # Still shocked
     ],
     Emotion.DEADPAN: [
-        HeadPose(roll=0, pitch=0, yaw=0),      # Just... stare
-        HeadPose(roll=2, pitch=0, yaw=0),      # Tiny movement
-        HeadPose(roll=-2, pitch=0, yaw=0),     # Other way
-        HeadPose(roll=0, pitch=0, yaw=0),      # Back to stare
+        HeadPose(roll=0, pitch=0, yaw=0),       # Just... stare
+        HeadPose(roll=5, pitch=0, yaw=0),       # Tiny movement
+        HeadPose(roll=-5, pitch=0, yaw=0),      # Other way
+        HeadPose(roll=0, pitch=0, yaw=0),       # Back to stare
     ],
     Emotion.EXASPERATED: [
-        HeadPose(roll=0, pitch=-20, yaw=0),    # Look UP in exasperation
-        HeadPose(roll=-15, pitch=-15, yaw=-20),# Roll head
-        HeadPose(roll=15, pitch=-15, yaw=20),  # Other way
-        HeadPose(roll=0, pitch=25, yaw=0),     # Head drop
-        HeadPose(roll=0, pitch=10, yaw=0),     # Defeated
+        HeadPose(roll=0, pitch=-30, yaw=0),     # Look UP in exasperation
+        HeadPose(roll=-25, pitch=-25, yaw=-30), # Roll head
+        HeadPose(roll=25, pitch=-25, yaw=30),   # Other way
+        HeadPose(roll=0, pitch=35, yaw=0),      # Head drop
+        HeadPose(roll=0, pitch=15, yaw=0),      # Defeated
     ],
     Emotion.JUDGING: [
-        HeadPose(roll=15, pitch=-5, yaw=0),    # Tilt head - JUDGING
-        HeadPose(roll=18, pitch=-3, yaw=5),    # Hold the judgment
-        HeadPose(roll=15, pitch=0, yaw=0),     # Still judging
-        HeadPose(roll=10, pitch=0, yaw=0),     # Slight nod - yep, judged
+        HeadPose(roll=25, pitch=-8, yaw=0),     # Tilt head - JUDGING HARD
+        HeadPose(roll=28, pitch=-5, yaw=10),    # Hold the judgment
+        HeadPose(roll=25, pitch=0, yaw=0),      # Still judging
+        HeadPose(roll=15, pitch=0, yaw=0),      # Slight nod - yep, judged
     ],
 }
 
@@ -280,12 +283,15 @@ class EmotionEngine:
         movements = EMOTION_MOVEMENTS.get(emotion, EMOTION_MOVEMENTS[Emotion.IDLE])
         time_per_move = duration / len(movements)
 
+        print(f"[EMOTION] Expressing: {emotion.value} ({len(movements)} movements, {time_per_move:.2f}s each)")
+
         try:
-            for pose in movements:
+            for i, pose in enumerate(movements):
                 # Convert roll/pitch/yaw to transformation matrix
                 T = euler_to_transformation_matrix(pose.roll, pose.pitch, pose.yaw)
 
                 # Apply movement using ReachyMini API
+                print(f"[HEAD] Move {i+1}: roll={pose.roll:.0f}, pitch={pose.pitch:.0f}, yaw={pose.yaw:.0f}")
                 self.reachy.set_target_head_pose(T)
 
                 await asyncio.sleep(time_per_move)
@@ -293,9 +299,12 @@ class EmotionEngine:
             # Return to neutral at end (subtle)
             T_neutral = euler_to_transformation_matrix(0, 0, 0)
             self.reachy.set_target_head_pose(T_neutral)
+            print(f"[HEAD] Returned to neutral")
 
         except Exception as e:
             print(f"[EMOTION] Movement error: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def idle_animation(self):
         """Subtle idle movements when not doing anything."""
