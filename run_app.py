@@ -7,6 +7,7 @@ Usage:
 """
 
 import sys
+import time
 
 
 def main():
@@ -20,23 +21,32 @@ def main():
 
     reachy = None
     if not use_sim:
-        try:
-            from reachy_mini import ReachyMini
-            print("[REACHY] Connecting to SDK...")
+        from reachy_mini import ReachyMini
 
-            # Simple connection like dyson-mechanic uses
-            reachy = ReachyMini()
-            print("[REACHY] Connected to robot hardware!")
+        # Retry logic for robust SDK connection
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                print(f"[REACHY] Connecting to SDK (attempt {attempt+1}/{max_retries})...")
 
-            # Check for head control API
-            if hasattr(reachy, 'set_target_head_pose'):
-                print("[REACHY] Head control available!")
-            else:
-                print("[REACHY] Warning: No head control found")
+                # Enable daemon auto-start for reliable head movement
+                reachy = ReachyMini(spawn_daemon=True, localhost_only=False, timeout=15.0)
+                print("[REACHY] Connected to robot hardware!")
 
-        except Exception as e:
-            print(f"[REACHY] SDK connection failed: {e}")
-            reachy = None
+                # Check for head control API
+                if hasattr(reachy, 'set_target_head_pose'):
+                    print("[REACHY] Head control available!")
+                else:
+                    print("[REACHY] Warning: No head control found")
+                break  # Success, exit retry loop
+
+            except Exception as e:
+                print(f"[REACHY] Connection attempt {attempt+1}/{max_retries} failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                else:
+                    print("[REACHY] SDK connection failed after retries")
+                    reachy = None
 
         if reachy is None:
             print("[REACHY] Running with direct hardware (USB audio/camera)")
