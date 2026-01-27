@@ -56,6 +56,9 @@ class BadDashboard:
         self.on_play_sound = None    # Callback to play sound effect
         self.on_say_text = None      # Callback to say arbitrary text
 
+        # TTS Manager (set by main.py)
+        self.tts_manager = None
+
         self._load_voices()
         self._load_sounds()
         self._setup_routes()
@@ -232,6 +235,50 @@ class BadDashboard:
                 await self.on_say_text(text)
                 return {"status": "ok", "text": text}
             return JSONResponse({"error": "TTS not ready"}, status_code=500)
+
+        # TTS Manager endpoints
+        @self._app.get("/api/tts/status")
+        async def tts_status():
+            """Get TTS backend status and available backends."""
+            if not self.tts_manager:
+                return JSONResponse({"error": "TTS manager not initialized"}, status_code=500)
+            return self.tts_manager.get_status()
+
+        @self._app.post("/api/tts/switch")
+        async def tts_switch(backend_id: str = Form(...)):
+            """Switch to a different TTS backend."""
+            if not self.tts_manager:
+                return JSONResponse({"error": "TTS manager not initialized"}, status_code=500)
+            success = await self.tts_manager.switch_backend(backend_id)
+            if success:
+                return {"status": "ok", "backend": backend_id}
+            return JSONResponse({"error": f"Failed to switch to {backend_id}"}, status_code=400)
+
+        @self._app.post("/api/tts/test")
+        async def tts_test(backend_id: str = Form(...)):
+            """Test a TTS backend's latency."""
+            if not self.tts_manager:
+                return JSONResponse({"error": "TTS manager not initialized"}, status_code=500)
+            latency = await self.tts_manager.test_backend(backend_id)
+            if latency is not None:
+                return {"status": "ok", "backend_id": backend_id, "latency_ms": latency}
+            return JSONResponse({"error": f"Test failed for {backend_id}"}, status_code=400)
+
+        @self._app.post("/api/tts/benchmark")
+        async def tts_benchmark():
+            """Benchmark all available TTS backends."""
+            if not self.tts_manager:
+                return JSONResponse({"error": "TTS manager not initialized"}, status_code=500)
+            results = await self.tts_manager.benchmark_all()
+            return {"status": "ok", "results": results}
+
+        @self._app.post("/api/tts/remote-server")
+        async def tts_set_remote(url: str = Form(...)):
+            """Set the remote TTS server URL."""
+            if not self.tts_manager:
+                return JSONResponse({"error": "TTS manager not initialized"}, status_code=500)
+            self.tts_manager.set_remote_server(url)
+            return {"status": "ok", "url": url}
 
     def update_state(self, state: str):
         self.state = state
@@ -414,6 +461,61 @@ class BadDashboard:
         .btn-secondary { background: rgba(255,255,255,0.2); }
         .btn-small { padding: 5px 10px; font-size: 0.9em; }
         .swear-counter { font-size: 2.5em; color: #ff4444; }
+        /* TTS Backend styles */
+        .backend-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .backend-item:hover { background: rgba(255,255,255,0.1); }
+        .backend-item.active { border-color: #ff6b6b; background: rgba(255,100,100,0.15); }
+        .backend-item.unavailable { opacity: 0.5; cursor: not-allowed; }
+        .backend-item.loading { opacity: 0.7; cursor: wait; }
+        .backend-info { flex: 1; }
+        .backend-name { font-weight: 600; font-size: 1.1em; display: flex; align-items: center; gap: 8px; }
+        .backend-desc { color: #888; font-size: 0.9em; margin-top: 4px; }
+        .backend-actions { display: flex; align-items: center; gap: 10px; }
+        .backend-latency { color: #4ecdc4; font-size: 0.9em; min-width: 60px; text-align: right; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 600; }
+        .badge.local { background: #2d5a27; color: #8fd88d; }
+        .badge.cloud { background: #1a3a5c; color: #7db8e8; }
+        .badge.loaded { background: #5a2d27; color: #ff8888; }
+        .loading-overlay {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            background: rgba(255,100,100,0.1);
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #ff6b6b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .platform-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .platform-item:last-child { border-bottom: none; }
+        .platform-label { color: #888; }
+        .platform-value { font-weight: 600; }
+        .platform-value.yes { color: #4ecdc4; }
+        .platform-value.no { color: #888; }
     </style>
 </head>
 <body>
@@ -426,6 +528,7 @@ class BadDashboard:
         <div class="tabs">
             <button class="tab active" onclick="showTab('monitor')">Monitor</button>
             <button class="tab" onclick="showTab('voices')">Voices & Sounds</button>
+            <button class="tab" onclick="showTab('settings')">Settings</button>
         </div>
 
         <!-- Monitor Tab -->
@@ -511,6 +614,60 @@ class BadDashboard:
                         <input type="file" id="sound-file" accept="audio/*">
                         <button class="btn" onclick="uploadSound()">Upload Sound</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="tab-settings" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <h2>TTS Backend</h2>
+                    <p style="color: #888; margin-bottom: 15px;">Select text-to-speech engine for voice synthesis</p>
+                    <div id="tts-loading" class="loading-overlay" style="display: none;">
+                        <div class="spinner"></div>
+                        <span>Loading model...</span>
+                    </div>
+                    <div id="tts-backend-list"></div>
+                    <div style="margin-top: 20px;">
+                        <button class="btn" onclick="benchmarkTTS()" id="benchmark-btn">Benchmark All</button>
+                        <span id="benchmark-status" style="margin-left: 10px; color: #888;"></span>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>Platform Info</h2>
+                    <div id="platform-info">
+                        <div class="platform-item">
+                            <span class="platform-label">System:</span>
+                            <span class="platform-value" id="platform-system">-</span>
+                        </div>
+                        <div class="platform-item">
+                            <span class="platform-label">Architecture:</span>
+                            <span class="platform-value" id="platform-arch">-</span>
+                        </div>
+                        <div class="platform-item">
+                            <span class="platform-label">Apple Silicon:</span>
+                            <span class="platform-value" id="platform-apple">-</span>
+                        </div>
+                        <div class="platform-item">
+                            <span class="platform-label">CUDA:</span>
+                            <span class="platform-value" id="platform-cuda">-</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>Remote TTS Server</h2>
+                    <p style="color: #888; margin-bottom: 15px;">Run TTS inference on your Mac and stream audio to Reachy</p>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="remote-server-url" placeholder="http://192.168.1.100:8090"
+                               style="flex: 1; padding: 10px; border: 1px solid #333; border-radius: 4px; background: #1a1a1a; color: #fff;">
+                        <button class="btn" onclick="setRemoteServer()">Set</button>
+                        <button class="btn" onclick="testRemoteServer()" style="background: #333;">Test</button>
+                    </div>
+                    <div id="remote-server-status" style="margin-top: 10px; color: #888;"></div>
+                    <p style="color: #666; font-size: 12px; margin-top: 10px;">
+                        Run <code style="background: #333; padding: 2px 6px; border-radius: 3px;">python tts_server.py --host 0.0.0.0</code> on your Mac to start the server.
+                    </p>
                 </div>
             </div>
         </div>
@@ -618,8 +775,174 @@ class BadDashboard:
             updateStatus();
         }
 
+        // TTS Manager functions
+        let ttsStatus = null;
+
+        async function updateTTSStatus() {
+            try {
+                const r = await fetch('/api/tts/status');
+                if (!r.ok) return;
+                ttsStatus = await r.json();
+                renderTTSBackends();
+                renderPlatformInfo();
+            } catch(e) { console.error('TTS status error:', e); }
+        }
+
+        function renderTTSBackends() {
+            if (!ttsStatus) return;
+            const list = document.getElementById('tts-backend-list');
+            if (!list) return;
+
+            const loading = document.getElementById('tts-loading');
+            if (loading) {
+                loading.style.display = ttsStatus.is_loading ? 'flex' : 'none';
+            }
+
+            list.innerHTML = ttsStatus.backends.map(b => {
+                const isActive = b.id === ttsStatus.current_backend;
+                const classes = ['backend-item'];
+                if (isActive) classes.push('active');
+                if (!b.available) classes.push('unavailable');
+                if (ttsStatus.is_loading && isActive) classes.push('loading');
+
+                const badges = [];
+                badges.push(`<span class="badge ${b.is_local ? 'local' : 'cloud'}">${b.is_local ? 'Local' : 'Cloud'}</span>`);
+                if (b.loaded) badges.push('<span class="badge loaded">Loaded</span>');
+
+                const latency = b.last_latency_ms ? `${Math.round(b.last_latency_ms)}ms` : '';
+
+                return `
+                    <div class="${classes.join(' ')}" onclick="${b.available ? `switchTTSBackend('${b.id}')` : ''}">
+                        <div class="backend-info">
+                            <div class="backend-name">
+                                ${isActive ? '●' : '○'} ${b.name}
+                                ${badges.join(' ')}
+                            </div>
+                            <div class="backend-desc">${b.backend_type} - ${b.description}</div>
+                        </div>
+                        <div class="backend-actions">
+                            <span class="backend-latency">${latency}</span>
+                            ${b.available && !isActive ? `<button class="btn btn-small btn-secondary" onclick="event.stopPropagation(); testTTSBackend('${b.id}')">Test</button>` : ''}
+                            ${isActive ? '✓' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderPlatformInfo() {
+            if (!ttsStatus || !ttsStatus.platform) return;
+            const p = ttsStatus.platform;
+            document.getElementById('platform-system').textContent = p.system;
+            document.getElementById('platform-arch').textContent = p.machine;
+            const appleEl = document.getElementById('platform-apple');
+            appleEl.textContent = p.is_apple_silicon ? 'Yes' : 'No';
+            appleEl.className = 'platform-value ' + (p.is_apple_silicon ? 'yes' : 'no');
+            const cudaEl = document.getElementById('platform-cuda');
+            cudaEl.textContent = p.has_cuda ? 'Yes' : 'No';
+            cudaEl.className = 'platform-value ' + (p.has_cuda ? 'yes' : 'no');
+        }
+
+        async function switchTTSBackend(backendId) {
+            if (ttsStatus && ttsStatus.is_loading) return;
+            const loading = document.getElementById('tts-loading');
+            if (loading) loading.style.display = 'flex';
+
+            const fd = new FormData();
+            fd.append('backend_id', backendId);
+            const r = await fetch('/api/tts/switch', {method: 'POST', body: fd});
+            if (r.ok) {
+                await updateTTSStatus();
+            } else {
+                alert('Failed to switch backend');
+                if (loading) loading.style.display = 'none';
+            }
+        }
+
+        async function testTTSBackend(backendId) {
+            const fd = new FormData();
+            fd.append('backend_id', backendId);
+            const r = await fetch('/api/tts/test', {method: 'POST', body: fd});
+            if (r.ok) {
+                await updateTTSStatus();
+            } else {
+                alert('Test failed');
+            }
+        }
+
+        async function benchmarkTTS() {
+            const btn = document.getElementById('benchmark-btn');
+            const status = document.getElementById('benchmark-status');
+            btn.disabled = true;
+            status.textContent = 'Running benchmarks...';
+
+            const r = await fetch('/api/tts/benchmark', {method: 'POST'});
+            if (r.ok) {
+                const data = await r.json();
+                status.textContent = `Completed! Fastest: ${data.results[0]?.name || 'N/A'}`;
+                await updateTTSStatus();
+            } else {
+                status.textContent = 'Benchmark failed';
+            }
+            btn.disabled = false;
+        }
+
+        // Remote TTS Server functions
+        function updateRemoteServerUI() {
+            if (ttsStatus && ttsStatus.remote_server_url) {
+                document.getElementById('remote-server-url').value = ttsStatus.remote_server_url;
+            }
+        }
+
+        async function setRemoteServer() {
+            const url = document.getElementById('remote-server-url').value.trim();
+            if (!url) return alert('Please enter a URL');
+
+            const status = document.getElementById('remote-server-status');
+            status.textContent = 'Setting remote server...';
+            status.style.color = '#888';
+
+            const fd = new FormData();
+            fd.append('url', url);
+            const r = await fetch('/api/tts/remote-server', {method: 'POST', body: fd});
+            if (r.ok) {
+                status.textContent = 'Remote server URL updated! Select "Remote Mac TTS" in backends above.';
+                status.style.color = '#4ecdc4';
+                await updateTTSStatus();
+            } else {
+                status.textContent = 'Failed to set remote server';
+                status.style.color = '#ff6b6b';
+            }
+        }
+
+        async function testRemoteServer() {
+            const url = document.getElementById('remote-server-url').value.trim();
+            if (!url) return alert('Please enter a URL');
+
+            const status = document.getElementById('remote-server-status');
+            status.textContent = 'Testing connection...';
+            status.style.color = '#888';
+
+            try {
+                const r = await fetch(url + '/status', {method: 'GET', mode: 'cors'});
+                if (r.ok) {
+                    const data = await r.json();
+                    status.innerHTML = `Connected! Server status: ${data.status}<br>Model: ${data.current_model || 'N/A'}<br>Latency: ${data.last_latency_ms ? Math.round(data.last_latency_ms) + 'ms' : 'N/A'}`;
+                    status.style.color = '#4ecdc4';
+                } else {
+                    status.textContent = 'Server responded with error: ' + r.status;
+                    status.style.color = '#ff6b6b';
+                }
+            } catch(e) {
+                status.textContent = 'Connection failed: ' + e.message;
+                status.style.color = '#ff6b6b';
+            }
+        }
+
         setInterval(updateStatus, 1000);
+        setInterval(updateTTSStatus, 2000);
         updateStatus();
+        updateTTSStatus().then(updateRemoteServerUI);
         document.getElementById('camera-feed').onerror = function() {
             setTimeout(() => { this.src = '/api/frame/stream?' + Date.now(); }, 1000);
         };

@@ -28,6 +28,7 @@ from .emotions import EmotionEngine, Emotion
 from .dashboard import BadDashboard
 from .tools import ToolManager, TOOL_AWARE_PROMPT_ADDITION
 from .comedy import ComedyEngine, COMEDY_SYSTEM_PROMPT
+from .tts_manager import TTSManager
 
 # Try to import audio-synchronized head movement
 try:
@@ -44,6 +45,34 @@ try:
 except ImportError:
     EDGE_TTS_AVAILABLE = False
     StreamingTTSBuffer = None
+
+# Try to import Qwen3-TTS (ultra-low latency local TTS - CUDA only)
+try:
+    from .tts_fast import Qwen3TTS
+    QWEN3_TTS_AVAILABLE = True
+except ImportError:
+    QWEN3_TTS_AVAILABLE = False
+    Qwen3TTS = None
+
+# Try to import MLX-Audio (Apple Silicon native TTS)
+try:
+    from .tts_fast import MLXAudioTTS
+    import platform
+    # Only enable on macOS with Apple Silicon
+    MLX_TTS_AVAILABLE = platform.system() == "Darwin" and platform.machine() == "arm64"
+    if not MLX_TTS_AVAILABLE:
+        MLX_TTS_AVAILABLE = False
+except ImportError:
+    MLX_TTS_AVAILABLE = False
+    MLXAudioTTS = None
+
+# TTS backend selection: "mlx", "qwen3", "edge", or "auto"
+# Set via environment variable or defaults to "auto"
+# Auto priority: mlx (Mac) -> qwen3 (CUDA) -> edge (cloud)
+TTS_BACKEND = os.environ.get("TTS_BACKEND", "auto").lower()
+
+# MLX model selection: kokoro (fastest), marvis (streaming), qwen3, csm, chatterbox
+MLX_MODEL = os.environ.get("MLX_MODEL", "kokoro").lower()
 
 try:
     from .stt_fast import FastSTT
@@ -108,23 +137,20 @@ class BadReachyApp:
             self.stt = LocalWhisperSTT(self.config.whisper_model)
             print("[STT] Using local Whisper (slow)")
 
-        # Use fast TTS if available (Edge TTS)
-        self.use_fast_tts = EDGE_TTS_AVAILABLE
-        if self.use_fast_tts:
-            # UK male voice, faster rate (+15%) for snappy delivery, slightly lower pitch for grumpy tone
-            self.fast_tts = EdgeTTS(voice="en-GB-RyanNeural", rate="+15%", pitch="-5Hz")
-            print("[TTS] Edge TTS enabled (fast, UK voice, snappy delivery)")
-        else:
-            self.tts = ChatterboxTTS(self.config.tts_server_url)
-            print("[TTS] Using Chatterbox (slow)")
+        # TTS Manager - handles backend selection and runtime switching
+        self.tts_manager = TTSManager()
+        self._tts_backend_preference = TTS_BACKEND
+        # Note: TTS backend will be initialized asynchronously in _async_run()
+
+        # Legacy fallback for Chatterbox
+        self.tts = ChatterboxTTS(self.config.tts_server_url)
 
         self.tools = ToolManager()
 
         self.emotions = EmotionEngine(reachy)
-        # ComedyEngine needs a TTS reference - use fast or slow
-        tts_for_comedy = self.fast_tts if self.use_fast_tts else self.tts
-        self.comedy = ComedyEngine(tts_for_comedy)
-        self.dashboard = BadDashboard(port=8080)
+        # ComedyEngine - TTS reference will be set after backend initialization
+        self.comedy = ComedyEngine(self.tts)
+        self.dashboard = BadDashboard(port=8081)  # 8080 is used by reachy daemon
 
         # Audio-synchronized head movement
         self.head_wobbler = None
@@ -369,6 +395,19 @@ class BadReachyApp:
 
     async def _listen(self) -> Optional[str]:
         """Listen for user speech."""
+        # Check if STT is available
+        stt_ready = False
+        if self.use_fast_stt:
+            stt_ready = self.fast_stt.is_ready() if hasattr(self.fast_stt, 'is_ready') else False
+        else:
+            stt_ready = self.stt.is_ready() if hasattr(self.stt, 'is_ready') else False
+
+        if not stt_ready:
+            # STT not available - just wait and return None
+            # User can use dashboard text input instead
+            await asyncio.sleep(1.0)
+            return None
+
         # ECHO SUPPRESSION: Wait after TTS finishes to avoid hearing ourselves
         # Reduced from 3s to 1.5s for snappier response
         time_since_tts = time.time() - self.context.last_tts_end_time
@@ -544,18 +583,22 @@ class BadReachyApp:
         emotion = self.emotions.detect_emotion_from_text(text)
         asyncio.create_task(self.emotions.express_emotion(emotion, duration=0.5))
 
-        if self.use_fast_tts:
-            # Check for [INNER] markers
+        # Get TTS from manager
+        fast_tts = self.tts_manager.get_current_backend()
+        if fast_tts:
+            is_mp3 = not self.tts_manager.outputs_wav()
             if '[INNER]' in text.upper() or '[/INNER]' in text.upper():
-                audio_chunks = await self.fast_tts.synthesize_multi_voice(clean_text)
+                audio_chunks = await fast_tts.synthesize_multi_voice(clean_text)
                 for audio in audio_chunks:
                     if audio:
-                        await play_audio_fast(audio, is_mp3=True, head_wobbler=self.head_wobbler)
+                        # Play through Reachy speaker if available, else local
+                        await play_audio_fast(audio, is_mp3=is_mp3, head_wobbler=self.head_wobbler, reachy=self.reachy)
             else:
-                audio = await self.fast_tts.synthesize(clean_text)
+                audio = await fast_tts.synthesize(clean_text)
                 if audio:
-                    await play_audio_fast(audio, is_mp3=True, head_wobbler=self.head_wobbler)
+                    await play_audio_fast(audio, is_mp3=is_mp3, head_wobbler=self.head_wobbler, reachy=self.reachy)
         else:
+            # Fallback to Chatterbox
             audio = await self.tts.synthesize(clean_text)
             if audio:
                 await play_audio_on_reachy(self.reachy, audio)
@@ -578,34 +621,41 @@ class BadReachyApp:
         clean_text = self.emotions.strip_emotion_markers(text)
         clean_text = self.comedy.add_comic_emphasis(clean_text)
 
+        # Get TTS from manager
+        fast_tts = self.tts_manager.get_current_backend()
+
         # Use MULTI-VOICE TTS for [INNER] markers (schizophrenic effect)
-        if self.use_fast_tts:
-            print(f"[TTS-DEBUG] use_fast_tts={self.use_fast_tts}, has_multi_voice={hasattr(self.fast_tts, 'synthesize_multi_voice')}")
-        if self.use_fast_tts and hasattr(self.fast_tts, 'synthesize_multi_voice'):
-            from .tts_fast import play_audio_chunks
+        if fast_tts:
+            print(f"[TTS-DEBUG] Using TTS manager backend: {self.tts_manager._current_backend_id}")
+            if hasattr(fast_tts, 'synthesize_multi_voice'):
+                from .tts_fast import play_audio_chunks
 
-            # Use multi-voice synthesis to handle [INNER] markers with different voice
-            print(f"[TTS] Using multi-voice synthesis for: {clean_text[:50]}...")
-            audio_chunks = await self.fast_tts.synthesize_multi_voice(clean_text)
+                # Use multi-voice synthesis to handle [INNER] markers with different voice
+                print(f"[TTS] Using multi-voice synthesis for: {clean_text[:50]}...")
+                audio_chunks = await fast_tts.synthesize_multi_voice(clean_text)
+                is_mp3 = not self.tts_manager.outputs_wav()
 
-            if audio_chunks:
-                # Play chunks sequentially (they were generated in parallel)
-                for i, audio in enumerate(audio_chunks):
-                    if audio:
-                        # Animate while speaking
-                        asyncio.create_task(
-                            self.emotions.express_emotion(Emotion.SPEAKING, duration=0.5)
-                        )
-                        await play_audio_fast(audio, is_mp3=True, head_wobbler=self.head_wobbler)
+                if audio_chunks:
+                    # Play chunks sequentially (they were generated in parallel)
+                    for i, audio in enumerate(audio_chunks):
+                        if audio:
+                            # Animate while speaking
+                            asyncio.create_task(
+                                self.emotions.express_emotion(Emotion.SPEAKING, duration=0.5)
+                            )
+                            # Play through Reachy speaker if available
+                            await play_audio_fast(audio, is_mp3=is_mp3, head_wobbler=self.head_wobbler, reachy=self.reachy)
 
-                self.context.last_tts_end_time = time.time()
-        elif self.use_fast_tts:
-            # Fallback to single synthesis
-            audio = await self.fast_tts.synthesize(clean_text)
-            if audio:
-                await play_audio_fast(audio, is_mp3=True, head_wobbler=self.head_wobbler)
-                self.context.last_tts_end_time = time.time()
+                    self.context.last_tts_end_time = time.time()
+            else:
+                # Fallback to single synthesis
+                audio = await fast_tts.synthesize(clean_text)
+                if audio:
+                    is_mp3 = not self.tts_manager.outputs_wav()
+                    await play_audio_fast(audio, is_mp3=is_mp3, head_wobbler=self.head_wobbler, reachy=self.reachy)
+                    self.context.last_tts_end_time = time.time()
         else:
+            # Fallback to Chatterbox
             audio = await self.tts.synthesize(clean_text)
             if audio:
                 await play_audio_on_reachy(self.reachy, audio)
@@ -696,43 +746,55 @@ class BadReachyApp:
         """Verify all systems are working."""
         print("[BAD] Running startup checks... what a waste of my time.")
 
-        checks = []
+        critical_checks = []
+        optional_checks = []
 
-        # Check LLM
+        # Check LLM (critical)
         llm_ok = await self.llm.test_connection()
         llm_name = "Groq LLM" if isinstance(self.llm, GroqLLM) else "LM Studio"
-        checks.append((llm_name, llm_ok))
+        critical_checks.append((llm_name, llm_ok))
         print(f"  {llm_name}: {'OK' if llm_ok else 'FAILED'}")
 
-        # Check TTS
-        if self.use_fast_tts:
-            tts_ok = await self.fast_tts.test_connection()
-            checks.append(("Edge TTS (fast)", tts_ok))
-            print(f"  Edge TTS: {'OK' if tts_ok else 'FAILED'}")
+        # Check TTS (critical)
+        fast_tts = self.tts_manager.get_current_backend()
+        if fast_tts:
+            tts_ok = await fast_tts.test_connection()
+            backend_name = f"TTS ({self.tts_manager._current_backend_id})"
+            critical_checks.append((backend_name, tts_ok))
+            print(f"  {backend_name}: {'OK' if tts_ok else 'FAILED'}")
         else:
             tts_ok = await self.tts.test_connection()
-            checks.append(("Chatterbox TTS", tts_ok))
+            critical_checks.append(("Chatterbox TTS", tts_ok))
             print(f"  Chatterbox TTS: {'OK' if tts_ok else 'FAILED'}")
 
-        # Check STT
+        # Check STT (optional - can use dashboard text input)
         if self.use_fast_stt:
             stt_ok = self.fast_stt.is_ready()
-            checks.append(("Fast STT (Groq+VAD)", stt_ok))
-            print(f"  Fast STT: {'OK' if stt_ok else 'FAILED'}")
+            optional_checks.append(("Fast STT (Groq+VAD)", stt_ok))
+            print(f"  Fast STT: {'OK' if stt_ok else 'WARN (use dashboard text input)'}")
         else:
             stt_ok = self.stt.is_ready()
-            checks.append(("Whisper STT", stt_ok))
-            print(f"  Whisper STT: {'OK' if stt_ok else 'FAILED'}")
+            optional_checks.append(("Whisper STT", stt_ok))
+            print(f"  Whisper STT: {'OK' if stt_ok else 'WARN (use dashboard text input)'}")
 
-        all_ok = all(ok for _, ok in checks)
+        critical_ok = all(ok for _, ok in critical_checks)
+        optional_ok = all(ok for _, ok in optional_checks)
 
-        if not all_ok:
-            print("[BAD] Some checks failed. Great. Just great.")
-            for name, ok in checks:
+        if not critical_ok:
+            print("[BAD] Critical checks failed. Great. Just great.")
+            for name, ok in critical_checks:
                 if not ok:
-                    print(f"  FAILED: {name}")
+                    print(f"  CRITICAL FAILED: {name}")
+            return False
 
-        return all_ok
+        if not optional_ok:
+            print("[BAD] Some optional checks failed - voice input disabled.")
+            print("[BAD] Use the dashboard at http://localhost:8081 to type instead.")
+            for name, ok in optional_checks:
+                if not ok:
+                    print(f"  OPTIONAL FAILED: {name}")
+
+        return True
 
     def run(self):
         """Run the grumpy robot."""
@@ -749,6 +811,9 @@ class BadReachyApp:
 
         # Set up dashboard camera feed
         self.dashboard.get_frame = self._get_latest_frame
+
+        # Wire TTS manager to dashboard
+        self.dashboard.tts_manager = self.tts_manager
 
         # Set up manual say callback
         async def on_say_text(text: str):
@@ -771,6 +836,19 @@ class BadReachyApp:
 
     async def _async_run(self):
         """Async main runner."""
+        # Initialize TTS backend
+        print(f"[TTS] Initializing with preference: {self._tts_backend_preference}")
+        success = await self.tts_manager.initialize_preferred(self._tts_backend_preference)
+        if success:
+            backend = self.tts_manager._current_backend_id
+            print(f"[TTS] Backend initialized: {backend}")
+            # Update comedy engine with fast TTS if available
+            fast_tts = self.tts_manager.get_current_backend()
+            if fast_tts:
+                self.comedy.tts = fast_tts
+        else:
+            print("[TTS] WARNING: No fast TTS backend available, using Chatterbox fallback")
+
         # Startup checks
         if not await self.startup_checks():
             print("[BAD] Can't start with broken systems. Fix your shit.")

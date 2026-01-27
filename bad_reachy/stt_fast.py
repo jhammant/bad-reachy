@@ -91,7 +91,7 @@ class VADRecorder:
         try:
             # Try webrtcvad
             import webrtcvad
-            self.vad = ('webrtc', webrtcvad.Vad(2))  # Aggressiveness 0-3
+            self.vad = ('webrtc', webrtcvad.Vad(1))  # Aggressiveness 0-3 (1=more sensitive)
             print("[VAD] Using WebRTC VAD")
             return
         except ImportError:
@@ -213,6 +213,11 @@ class VADRecorder:
 
             stream.stop()
             stream.close()
+
+            # Skip if no speech was detected (saves API calls)
+            if not speech_started:
+                print("[VAD] No speech detected, skipping transcription")
+                return b'', 0.0
 
             # Combine chunks
             if audio_chunks:

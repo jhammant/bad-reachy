@@ -29,8 +29,8 @@ def main():
             try:
                 print(f"[REACHY] Connecting to SDK (attempt {attempt+1}/{max_retries})...")
 
-                # Enable daemon auto-start for reliable head movement
-                reachy = ReachyMini(spawn_daemon=True, localhost_only=False, timeout=15.0)
+                # Connect to existing daemon (don't spawn a new one)
+                reachy = ReachyMini(spawn_daemon=False, localhost_only=True, timeout=15.0)
                 print("[REACHY] Connected to robot hardware!")
 
                 # Check for head control API
